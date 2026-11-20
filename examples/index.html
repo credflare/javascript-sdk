@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Credflare document verification</title>
+<style>:root{color-scheme:light dark;--paper:#fff;--ink:#18233c;--muted:#52617a;--primary:#20315f;--button:#fff;--border:#cad4e5;--radius:14px}@media(prefers-color-scheme:dark){:root{--paper:#111c31;--ink:#f4f7fe;--muted:#b7c4da;--primary:#b9cdff;--button:#16294e;--border:#566983}}*{box-sizing:border-box}body{font:18px/1.5 system-ui;background:var(--paper);color:var(--ink);max-width:680px;margin:32px auto;padding:24px}header{font-size:15px;font-weight:600;min-height:24px}footer{margin-top:40px;font-size:12px;color:var(--muted)}h1{font-size:32px;line-height:1.2}p{color:var(--muted)}input,button,select{font:inherit;padding:14px;width:100%;border:1px solid var(--border);border-radius:var(--radius);margin:8px 0 20px}button{background:var(--primary);color:var(--button);min-height:56px;cursor:pointer}button:disabled{opacity:.5;cursor:wait}label{display:block}img{display:block;max-width:100%;max-height:240px;object-fit:contain;border-radius:var(--radius)}fieldset{border:1px solid var(--border);border-radius:var(--radius);margin-bottom:24px;padding:20px}[hidden]{display:none!important}</style>
+<header id="verifier"></header><main><h1>Share your documents</h1><p>Review every photo and file before sending. Sandbox demo: use sample documents.</p>
+<form id="start"><label>Email <input name="email" type="email" required autocomplete="email"></label><label>Sample profile<select name="mode"><option value="either">Photos or files</option><option value="snapshot">Camera photos</option><option value="upload">File uploads</option><option value="snapshot_and_upload">Photos and files</option></select></label><button>Start verification</button></form>
+<p id="status" role="status" aria-live="polite"></p><section id="capture"></section></main><footer>Secured by Credflare</footer>
+<script type="module">
+import {CredflareSession,captureSteps} from '/dist/index.js';
+const status=document.querySelector('#status'),capture=document.querySelector('#capture'),start=document.querySelector('#start');
+let session,info;
+async function showDocuments(){
+ info=await session.get();capture.replaceChildren();document.querySelector('#verifier').textContent=info.requester?.name??'';
+ const docs=info.profile?.document_requirements??[];
+ if(!docs.length){status.textContent=info.profile?.form_schema?.length||info.profile?.verification_requirements?.length?'Documents received. Return to the requesting app for the remaining checks.':'Documents received. Your verifier will review what you sent.';return;}
+ status.textContent='Choose a document to share.';
+ for(const requirement of docs){const button=document.createElement('button');button.textContent=requirement.document_type.name;button.onclick=()=>captureDocument(requirement);capture.append(button);}
+}
+function captureDocument(requirement){
+ capture.replaceChildren();const title=document.createElement('h2');title.textContent=requirement.document_type.name;capture.append(title);
+ let steps;try{steps=captureSteps(requirement);}catch(error){status.textContent=error.message;return;}
+ const form=document.createElement('form'),selected=new Map();let pending;
+ for(const step of steps){
+  const field=document.createElement('fieldset'),legend=document.createElement('legend');legend.textContent=`${step.label} · ${step.sourceLabel}`;field.append(legend);
+  const sources=step.source==='either'?['camera','upload']:[step.source];
+  for(const source of sources){const label=document.createElement('label');label.textContent=source==='camera'?'Take a photo':'Choose a file';const input=document.createElement('input');input.type='file';input.accept=source==='camera'?'image/*':info.upload_limits.allowed_file_types.map(ext=>'.'+ext).join(',');if(source==='camera')input.setAttribute('capture','environment');label.append(input);field.append(label);
+   input.onchange=()=>{pending=undefined;const file=input.files[0];if(!file)return;if(file.size>info.upload_limits.max_file_size_bytes){status.textContent='This file exceeds the allowed size.';input.value='';return;}if(!info.upload_limits.allowed_file_types.includes(file.name.split('.').pop().toLowerCase())){status.textContent='This file type is not allowed.';input.value='';return;}if(source==='camera'&&!file.type.startsWith('image/')){status.textContent='Choose a camera photo.';input.value='';return;}for(const other of field.querySelectorAll('input'))if(other!==input)other.value='';selected.set(step.id,{file,source,side:step.side,key:crypto.randomUUID()});preview.textContent=`Ready: ${file.name}`;status.textContent='Review your selected files before sending.';};
+  }
+  const preview=document.createElement('p');field.append(preview);form.append(field);
+ }
+ const note=document.createElement('p');note.textContent='Browser camera capture depends on your device. A photo does not prove liveness.';form.append(note);
+ const button=document.createElement('button');button.textContent='Send document';form.append(button);capture.append(form);
+ form.onsubmit=async event=>{event.preventDefault();if(selected.size!==steps.length){status.textContent='Add every requested photo or file before sending.';return;}button.disabled=true;for(const input of form.querySelectorAll('input'))input.disabled=true;
+  try{pending??={images:[...selected.values()],key:crypto.randomUUID()};status.textContent='Sending your document…';for(const image of pending.images){if(!image.id){const body=new FormData();body.append('file',image.file);body.append('side',image.side);body.append('capture_source',image.source);body.append('document_type_id',String(requirement.document_type.id));image.id=(await session.upload('documents',body,image.key)).id;}}
+   await session.submit({type:'document_verification',document_type_id:requirement.document_type.id,evidence:pending.images.map(image=>({file_id:image.id,source:image.source,side:image.side}))},pending.key);
+   capture.replaceChildren();status.textContent='Document received. Checking your remaining steps…';try{await showDocuments();}catch{const retry=document.createElement('button');retry.textContent='Check progress';retry.onclick=()=>showDocuments().catch(error=>{status.textContent=error.message;});capture.append(retry);status.textContent='Your document was sent. Check progress to continue.';}
+  }catch(error){status.textContent=error.message;button.disabled=false;for(const input of form.querySelectorAll('input'))input.disabled=false;}
+ };
+}
+start.onsubmit=async event=>{event.preventDefault();const button=start.querySelector('button');button.disabled=true;status.textContent='Preparing your verification…';try{const data=Object.fromEntries(new FormData(start));const response=await fetch('/session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});if(!response.ok)throw new Error('Could not start verification. Try again.');session=new CredflareSession(await response.json());await showDocuments();start.hidden=true;}catch(error){status.textContent=error.message;button.disabled=false;}};
+</script></html>
