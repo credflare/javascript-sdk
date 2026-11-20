@@ -23,7 +23,7 @@ function captureDocument(requirement){
  const form=document.createElement('form'),selected=new Map();let pending;
  for(const step of steps){
   const field=document.createElement('fieldset'),legend=document.createElement('legend');legend.textContent=`${step.label} · ${step.sourceLabel}`;field.append(legend);
-  const sources=step.source==='either'?['camera','upload']:[step.source];
+  const sources=step.source==='camera_or_upload'?['camera','upload']:[step.source];
   for(const source of sources){const label=document.createElement('label');label.textContent=source==='camera'?'Take a photo':'Choose a file';const input=document.createElement('input');input.type='file';input.accept=source==='camera'?'image/*':info.upload_limits.allowed_file_types.map(ext=>'.'+ext).join(',');if(source==='camera')input.setAttribute('capture','environment');label.append(input);field.append(label);
    input.onchange=()=>{pending=undefined;const file=input.files[0];if(!file)return;if(file.size>info.upload_limits.max_file_size_bytes){status.textContent='This file exceeds the allowed size.';input.value='';return;}if(!info.upload_limits.allowed_file_types.includes(file.name.split('.').pop().toLowerCase())){status.textContent='This file type is not allowed.';input.value='';return;}if(source==='camera'&&!file.type.startsWith('image/')){status.textContent='Choose a camera photo.';input.value='';return;}for(const other of field.querySelectorAll('input'))if(other!==input)other.value='';selected.set(step.id,{file,source,side:step.side,key:crypto.randomUUID()});preview.textContent=`Ready: ${file.name}`;status.textContent='Review your selected files before sending.';};
   }

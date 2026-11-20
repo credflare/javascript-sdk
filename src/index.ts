@@ -6,7 +6,7 @@ export interface SessionDescriptor {
 }
 export interface DocumentRequirement {
   document_type: { id: number; name: string; two_sided: boolean; capture_method: string };
-  capture_method?: 'upload' | 'either' | 'snapshot' | 'snapshot_and_upload' | 'camera_only';
+  capture_method?: 'upload' | 'snapshot' | 'snapshot_or_upload' | 'snapshot_and_upload' | 'either' | 'camera_only';
   requested_sides?: Array<'front' | 'back'>;
   group_key: string | null;
   rule: 'all_of' | 'any_of';

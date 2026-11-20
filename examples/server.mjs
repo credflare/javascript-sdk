@@ -5,7 +5,7 @@ import {CredflareServer} from '../dist/server.js';
 export function createDemoServer(environment = process.env, fetcher = globalThis.fetch) {
   const {CREDFLARE_API_URL, CREDFLARE_CLIENT_ID, CREDFLARE_CLIENT_SECRET, CREDFLARE_PROFILE_ID, CREDFLARE_PROFILE_IDS} = environment;
   if (!CREDFLARE_API_URL || !CREDFLARE_CLIENT_ID || !CREDFLARE_CLIENT_SECRET || !CREDFLARE_PROFILE_ID) throw new Error('Configure the API URL, client credentials and demo profile ID on the server.');
-  const profiles = CREDFLARE_PROFILE_IDS ? JSON.parse(CREDFLARE_PROFILE_IDS) : {either:Number(CREDFLARE_PROFILE_ID)};
+  const profiles = CREDFLARE_PROFILE_IDS ? JSON.parse(CREDFLARE_PROFILE_IDS) : {snapshot_or_upload:Number(CREDFLARE_PROFILE_ID)};
   const client = new CredflareServer(CREDFLARE_API_URL, {clientId:CREDFLARE_CLIENT_ID, clientSecret:CREDFLARE_CLIENT_SECRET}, fetcher);
   const origins = ['http://localhost:3107','http://127.0.0.1:3107'];
   return createServer(async (req, res) => {
@@ -28,7 +28,7 @@ export function createDemoServer(environment = process.env, fetcher = globalThis
         if (input.length > 4096) {res.writeHead(413);return res.end();}
       }
       const {email} = JSON.parse(input);
-      const mode = environment.CREDFLARE_DEMO_FLOW ?? 'either';
+      const mode = environment.CREDFLARE_DEMO_FLOW ?? 'snapshot_or_upload';
       if (typeof email !== 'string' || email.length > 255 || !Object.hasOwn(profiles,mode)) {
         res.writeHead(422,{'Content-Type':'application/json'});
         return res.end(JSON.stringify({message:'Enter an email and configure the demo flow on the server.'}));

@@ -63,7 +63,7 @@ npm run build
 node examples/server.mjs
 ```
 
-Open `http://localhost:3107`. The browser collects documents without displaying session credentials. Native examples request their own fresh session from this server. The server chooses the profile using `CREDFLARE_PROFILE_IDS` and `CREDFLARE_DEMO_FLOW` (default `either`), or `CREDFLARE_PROFILE_ID` when no map is configured. Configure a profile with `facial_verification` to exercise selfie collection. No profile choice is accepted from the browser. The sample server listens only on localhost and is not a production authentication implementation. Never commit its credentials or a session descriptor.
+Open `http://localhost:3107`. The browser collects documents without displaying session credentials. Native examples request their own fresh session from this server. The server chooses the profile using `CREDFLARE_PROFILE_IDS` and `CREDFLARE_DEMO_FLOW` (default `snapshot_or_upload`), or `CREDFLARE_PROFILE_ID` when no map is configured. Configure a profile with `facial_verification` to exercise selfie collection. No profile choice is accepted from the browser. The sample server listens only on localhost and is not a production authentication implementation. Never commit its credentials or a session descriptor.
 
 HTTPS is required except on loopback addresses. Browser origins must exactly match the allowlist supplied when the server creates a session. Applicant requests omit cookies.
 
