@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CredFlare SDK example</title>
+<style>body{font:18px system-ui;max-width:680px;margin:48px auto;padding:20px}input,button,textarea{font:inherit;margin:8px 0;padding:10px}label{display:block}textarea{width:100%;min-height:180px}</style>
+<h1>CredFlare SDK example</h1><p>Create a short-lived applicant session through your local backend. Use a synthetic document.</p>
+<form id="start"><label>Email <input name="email" type="email" required></label><button>Create session</button></form>
+<p id="status" role="status"></p><section id="capture"></section><label>Session descriptor for the native examples<textarea id="descriptor" readonly></textarea></label>
+<script type="module">
+import {CredflareSession} from '/dist/index.js';
+const status=document.querySelector('#status'), capture=document.querySelector('#capture');
+document.querySelector('#start').onsubmit=async event=>{
+ event.preventDefault();status.textContent='Creating session…';capture.replaceChildren();
+ try{
+  const response=await fetch('/session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:new FormData(event.target).get('email')})});
+  if(!response.ok)throw new Error('Could not create a session. Check the local server configuration.');
+  const descriptor=await response.json();document.querySelector('#descriptor').value=JSON.stringify(descriptor);
+  const session=new CredflareSession(descriptor), info=await session.get();
+  status.textContent=`Session ready in ${info.environment}. Choose one requested document to try an upload.`;
+  for(const requirement of info.profile?.document_requirements??[]){
+   const form=document.createElement('form'), title=document.createElement('h2');title.textContent=requirement.document_type.name;form.append(title);
+   if(requirement.capture_method==='camera_only'){const p=document.createElement('p');p.textContent='Trusted capture is not available in this SDK yet.';form.append(p);capture.append(form);continue;}
+   const sides=requirement.requested_sides??(requirement.document_type.two_sided?['front','back']:['front']);
+   for(const side of sides){const label=document.createElement('label');label.textContent=side;const input=document.createElement('input');input.type='file';input.name=side;input.required=true;input.accept=info.upload_limits.allowed_file_types.map(ext=>'.'+ext).join(',');label.append(input);form.append(label);}
+   const button=document.createElement('button');button.textContent='Submit document';form.append(button);capture.append(form);
+   let pending;
+   form.onchange=()=>{pending=undefined;};
+   form.onsubmit=async event=>{event.preventDefault();button.disabled=true;
+    try{
+     pending??={images:sides.map(side=>({side,file:new FormData(form).get(side),key:crypto.randomUUID()})),key:crypto.randomUUID()};
+     for(const image of pending.images){if(image.file.size>info.upload_limits.max_file_size_bytes)throw new Error('File exceeds the workspace limit.');if(!image.id){const body=new FormData();body.append('file',image.file);body.append('side',image.side);image.id=(await session.upload('documents',body,image.key)).id;}}
+     const ids=Object.fromEntries(pending.images.map(image=>[image.side,image.id]));
+     await session.submit({type:'document_verification',document_type_id:requirement.document_type.id,file_id:ids.front??ids[sides[0]],...(sides.length>1?{back_file_id:ids.back}:{})},pending.key);
+     status.textContent='Document submitted for review. This is not a verification decision.';
+    }catch(error){status.textContent=error.message;}finally{button.disabled=false;}
+   };
+  }
+ }catch(error){status.textContent=error.message;}
+};
+</script></html>
