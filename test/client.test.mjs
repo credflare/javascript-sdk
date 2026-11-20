@@ -11,7 +11,7 @@ before(async () => {
     const chunks = [];
     for await (const chunk of req) chunks.push(chunk);
     calls.push({ url: req.url, headers: req.headers, body: Buffer.concat(chunks).toString() });
-    const fixture = req.headers.authorization === 'Bearer wrong' ? 'unauthorized' : req.url.endsWith('/submit') ? 'submission' : req.url.endsWith('/uploads/documents') ? 'upload' : 'session';
+    const fixture = req.headers.authorization === 'Bearer wrong' ? 'unauthorized' : req.url.endsWith('/submit') ? 'submission' : req.url.endsWith('/uploads/biometrics') ? 'facial-upload' : req.url.endsWith('/uploads/documents') ? 'upload' : 'session';
     res.writeHead(fixture === 'unauthorized' ? 401 : fixture === 'session' ? 200 : 201, { 'Content-Type': 'application/json' });
     res.end(await readFile(new URL(`./fixtures/${fixture}.json`, import.meta.url)));
   }).listen(0, '127.0.0.1');
@@ -59,4 +59,17 @@ test('host-controlled session renewal keeps the client usable', async () => {
 
 test('refuses a mutation without a valid retry key', () => {
   assert.throws(() => session().submit({type:'form_submission',fields:{full_name:'Example'}}, ''), /UUID request key/);
+});
+
+test('sends a camera selfie through the biometric upload and facial submission API', async () => {
+  const form = new FormData();
+  form.append('file', new Blob([await readFile(new URL('./fixtures/documents/sample-front.png', import.meta.url))], {type:'image/png'}), 'selfie.png');
+  form.append('capture_source', 'camera');
+  const client = session(), key = crypto.randomUUID();
+  const uploaded = await client.upload('biometrics', form, key);
+  assert.equal(calls.at(-1).url.endsWith('/uploads/biometrics'), true);
+  assert.match(calls.at(-1).body, /name="capture_source"\r\n\r\ncamera/);
+  assert.equal(calls.at(-1).headers['x-idempotency-key'], key);
+  await client.submit({type:'facial_verification', image_file_id:uploaded.id}, crypto.randomUUID());
+  assert.deepEqual(JSON.parse(calls.at(-1).body), {type:'facial_verification', image_file_id:uploaded.id});
 });

@@ -15,7 +15,8 @@ export function createDemoServer(environment = process.env, fetcher = globalThis
         res.setHeader('Content-Type','text/html');
         return res.end(await readFile(new URL('./index.html',import.meta.url)));
       }
-      if (req.method === 'GET' && ['/dist/index.js','/dist/browser.js','/dist/capture.js'].includes(req.url)) {
+      if (req.method === 'GET' && req.url === '/credflare-mark.png') {res.setHeader('Content-Type','image/png');return res.end(await readFile(new URL('./credflare-mark.png',import.meta.url)));}
+      if (req.method === 'GET' && ['/dist/index.js','/dist/browser.js','/dist/capture.js','/dist/workflow.js'].includes(req.url)) {
         res.setHeader('Content-Type','text/javascript');
         return res.end(await readFile(new URL(`..${req.url}`,import.meta.url)));
       }
@@ -26,10 +27,11 @@ export function createDemoServer(environment = process.env, fetcher = globalThis
         input += chunk;
         if (input.length > 4096) {res.writeHead(413);return res.end();}
       }
-      const {email,mode = 'either'} = JSON.parse(input);
+      const {email} = JSON.parse(input);
+      const mode = environment.CREDFLARE_DEMO_FLOW ?? 'either';
       if (typeof email !== 'string' || email.length > 255 || !Object.hasOwn(profiles,mode)) {
         res.writeHead(422,{'Content-Type':'application/json'});
-        return res.end(JSON.stringify({message:'Choose a configured demo flow and enter an email.'}));
+        return res.end(JSON.stringify({message:'Enter an email and configure the demo flow on the server.'}));
       }
       const verification = await client.createVerification({email,profileId:Number(profiles[mode])});
       const session = await client.createSession(verification.id,origins);

@@ -63,8 +63,18 @@ npm run build
 node examples/server.mjs
 ```
 
-Open `http://localhost:3107`. The browser collects documents without displaying session credentials. Native examples request their own fresh session from this server. Use `CREDFLARE_PROFILE_IDS` as a JSON map of capture mode to profile ID to enable all four sample flows. The sample server listens only on localhost and is not a production authentication implementation. Never commit its credentials or a session descriptor.
+Open `http://localhost:3107`. The browser collects documents without displaying session credentials. Native examples request their own fresh session from this server. The server chooses the profile using `CREDFLARE_PROFILE_IDS` and `CREDFLARE_DEMO_FLOW` (default `either`), or `CREDFLARE_PROFILE_ID` when no map is configured. Configure a profile with `facial_verification` to exercise selfie collection. No profile choice is accepted from the browser. The sample server listens only on localhost and is not a production authentication implementation. Never commit its credentials or a session descriptor.
 
 HTTPS is required except on loopback addresses. Browser origins must exactly match the allowlist supplied when the server creates a session. Applicant requests omit cookies.
 
 See [the SDK flow requirements](docs/SDK-FLOW.md) for the guided flow and release boundary. Trusted-camera checks, liveness and deepfake detection are unavailable in this version.
+
+## Developer-configured facial collection
+
+Choose the compliance profile on your server when creating the case. The recipient does not choose a profile or verification mode. The SDK collects outstanding documents first, then opens the selfie step only when the case requests `facial_verification`. Selfie-only cases go directly to that step. Document alternatives and capture-source choices follow the server's requirement rules.
+
+The selfie step uses the front camera, provides a preview and retake action, and sends only after confirmation. Uploads use the scoped biometric endpoint; facial submissions reference the uploaded file ID. Retrying a send reuses its upload and submission keys. A receipt confirms collection for review, not a face match or liveness result.
+
+The backend currently reports liveness, trusted camera and deepfake detection as unavailable. Automated face matching and validated liveness processing are not implemented by this capture interface. Forms and location checks return control to the host app. Example apps obtain their requirements from the demo server without a recipient-facing profile selector.
+
+For browser selfie collection, import `mountSelfieCapture` from `@credflare/sdk-javascript/browser`. Call it only when `requiresSelfie(info)` is true and the document step has finished. It returns a cleanup function that stops camera tracks, aborts pending requests, and revokes the preview URL. Call cleanup when replacing the screen or navigating away. Refresh the session after its submission callback.

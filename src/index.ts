@@ -115,3 +115,5 @@ export class CredflareSession {
 
 export {captureSteps, capturePolicy, isCaptureSupported, methodSummary} from './capture.js';
 export type {CaptureSource, CaptureStep, CapturePolicy} from './capture.js';
+
+export {requiresSelfie, needsHostSteps, selfieFileTypes} from './workflow.js';
