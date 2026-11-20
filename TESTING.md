@@ -6,6 +6,7 @@ Date: 2026-11-20. Host: macOS 26.3, Apple Silicon. Runtime: Node 26.0.0, TypeScr
 | --- | --- |
 | TypeScript build | Passed |
 | HTTP contract tests | 7 passed |
+| Capture policy and step tests | 6 passed |
 | Session authentication and error envelope | Passed |
 | Multipart evidence upload and stable retry key | Passed |
 | File-ID submission | Passed |

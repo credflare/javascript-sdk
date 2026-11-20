@@ -37,17 +37,18 @@ const info = await client.get();
 const body = new FormData();
 body.append('file', selectedFile);
 body.append('side', 'front');
+body.append('capture_source', 'upload');
 const uploadKey = crypto.randomUUID();
 const uploaded = await client.upload('documents', body, uploadKey);
 const submitKey = crypto.randomUUID();
 await client.submit({
   type: 'document_verification',
   document_type_id: selectedRequirement.document_type.id,
-  file_id: uploaded.id,
+  evidence: [{file_id: uploaded.id, source: 'upload', side: 'front'}],
 }, submitKey);
 ```
 
-Reuse each request key with the same payload after a network interruption. Use a new key when the applicant changes evidence. Submit `back_file_id` when the requirement requests both sides. Client-side file checks improve feedback; the API enforces workspace size, file types and evidence ownership.
+Reuse each request key with the same payload after a network interruption. Use a new key when the applicant changes evidence. Use `captureSteps(requirement)` to collect every required side and source. `snapshot_and_upload` requires a separate camera photo and uploaded file for each side. Client-side file checks improve feedback; the API enforces workspace size, file types and evidence ownership.
 
 The client also supports form, facial-photo and location submissions. A facial photo is not a liveness result. The server remains authoritative for verification decisions.
 
@@ -62,7 +63,7 @@ npm run build
 node examples/server.mjs
 ```
 
-Open `http://localhost:3000`. The browser can submit a document and display a temporary session descriptor for the native examples. The sample server listens only on localhost and is not a production authentication implementation. Never commit its credentials or a session descriptor.
+Open `http://localhost:3107`. The browser collects documents without displaying session credentials. Native examples request their own fresh session from this server. Use `CREDFLARE_PROFILE_IDS` as a JSON map of capture mode to profile ID to enable all four sample flows. The sample server listens only on localhost and is not a production authentication implementation. Never commit its credentials or a session descriptor.
 
 HTTPS is required except on loopback addresses. Browser origins must exactly match the allowlist supplied when the server creates a session. Applicant requests omit cookies.
 

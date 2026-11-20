@@ -45,7 +45,7 @@ test('submits file IDs through the session API', async () => {
   assert.equal(JSON.parse(calls.at(-1).body).file_id, 1);
 });
 test('preserves API authentication errors', async () => {
-  await assert.rejects(session('wrong').get(), error => error instanceof CredflareError && error.status === 401 && error.kind === 'session_unavailable' && error.message === 'Invalid verification session.');
+  await assert.rejects(session('wrong').get(), error => error instanceof CredflareError && error.status === 401 && error.type === 'session_unavailable' && error.message === 'Invalid verification session.');
 });
 test('rejects insecure remote URLs before transmitting a token', () => {
   assert.throws(() => new CredflareSession({session_id:'00000000-0000-4000-8000-000000000001',token:'test-session-token',api_base_url:'http://example.test',expires_at:'2030-01-01T00:00:00Z'}), /HTTPS/);
