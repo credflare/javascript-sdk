@@ -1,19 +1,25 @@
 # Development test coverage
 
-Date: 2026-11-20. Host: macOS 26.3, Apple Silicon. Runtime: Node 26.0.0, TypeScript 7.0.2.
+Date: 2026-11-21. Host: macOS 26.3, Apple Silicon. Runtime: Node 26.0.0, TypeScript 7.0.2, Chrome headless.
 
-| Check | Result |
+```sh
+npm test                 # build and unit and contract tests
+npm run check:spec       # generated spec and fixtures match ../sdk-spec
+node tool/browser-camera.mjs
+```
+
+| Check | Coverage |
 | --- | --- |
-| TypeScript build | Passed |
-| HTTP contract tests | 8 passed |
-| Capture policy and step tests | 6 passed |
-| Profile requirements and collection progress | 2 passed |
-| Session authentication and error envelope | Passed |
-| Multipart evidence upload and stable retry key | Passed |
-| File-ID submission | Passed |
-| Insecure remote API destination rejection | Passed |
-| Host-controlled session replacement | Passed |
+| Contract tests | Session, documents, liveness challenge, gesture, video and selfie uploads (multipart fields and retry keys), facial submission, location submission, location rejection as a 422 validation error |
+| Gesture engine | Every trace in `test/fixtures/liveness-traces`, plus challenge sequencing, timeout and expiry |
+| Settings | Facial and location settings, defaults and reference place labels |
+| Location | Accuracy, age and mock checks, retry attempts, reference place copy |
+| MediaPipe signals | A real Face Landmarker result for a face turned to its own right and looking down (and its mirror) gives the contract signs for yaw and pitch |
 
-The HTTP tests use responses from isolated Laravel API requests with synthetic accounts and evidence. Backend authorization, expiry, revocation, CORS, file limits, document sides and retry behavior have separate API feature tests.
+`tool/browser-camera.mjs` starts headless Chrome with a synthetic camera, emulates geolocation and runs the remaining steps flow: liveness intro and consent, mirrored preview, challenge, gesture frames, video recording, selfie, uploads, facial submission, location consent, a low accuracy retry, a server rejection with retry, location submission and the receipt. The synthetic camera shows no face, so the page replays spec traces through the provider interface; the camera stream, recording and uploads are real. Set `SCREENSHOT_DIR` to save each screen.
 
-The browser camera test covers capture, preview, stopped camera tracks, biometric upload, retry without reupload, stable submission keys and cleanup using a software camera. Automated face matching, liveness processing and production deployment are outside the completed coverage.
+- Without API variables it uses the contract fixtures as the API.
+- With `CREDFLARE_API_URL`, `CREDFLARE_CLIENT_ID`, `CREDFLARE_CLIENT_SECRET` and `CREDFLARE_PROFILE_ID` it creates a case on that backend and runs the same flow against it.
+- With `CREDFLARE_FACE_MODEL` pointing to a local `face_landmarker.task` it also loads the MediaPipe provider on the synthetic camera and checks that it reports no face.
+
+Pending: a run with a real face in front of a camera on physical devices.
