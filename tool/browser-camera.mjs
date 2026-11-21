@@ -98,7 +98,7 @@ async function fakeApi(req, res, body) {
   }
   if (req.url.endsWith('/submit')) {
     const payload = JSON.parse(body.toString());
-    seen.submits.push(payload);
+    seen.submits.push({...payload, key: req.headers['x-idempotency-key']});
     if (payload.type === 'facial_verification') { stage.facial = true; return json(201, await fixture('facial-submission')); }
     if (payload.type === 'location_verification') {
       if (seen.submits.filter(item => item.type === 'location_verification').length === 1) return json(422, await fixture('location-rejection'));
@@ -242,6 +242,9 @@ try {
     assert.equal(located.metadata.provider, 'browser');
     assert.equal(located.metadata.is_mock, null);
     assert.equal(located.metadata.accuracy, 12);
+    const locationKeys = seen.submits.filter(item => item.type === 'location_verification').map(item => item.key);
+    assert.equal(locationKeys.length, 2);
+    assert.notEqual(locationKeys[0], locationKeys[1], 'a rejected location gets a new key for the next attempt');
   }
   await evaluate('window.dispose()');
   console.log(`PASS (${live ? 'live API' : 'fixture API'}): challenge ${gestures.join(', ')}, camera preview mirrored, gesture frames, webm recording, selfie, uploads, facial submission, location consent, low accuracy retry${live ? '' : ', server rejection retry'}, location submission and receipt`);

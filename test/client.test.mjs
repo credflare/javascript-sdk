@@ -140,6 +140,31 @@ test('submits facial evidence with the challenge, frames, video and metadata', a
   const retried = calls.length;
   await sendLivenessEvidence(session(), evidence);
   assert.equal(calls.length, retried + 1, 'a retry reuses uploaded files');
+  assert.equal(calls.at(-1).headers['x-idempotency-key'], evidence.submitKey);
+});
+
+test('a retry after a dropped upload resends it with the same key and skips finished ones', async () => {
+  const {sendLivenessEvidence} = await import('../dist/liveness.js');
+  const evidence = {
+    challenge: challengeFixture, provider: 'mediapipe', capturedAt: Date.now(),
+    gestures: challengeFixture.gestures.map(gesture => ({gesture, completedAt: Date.now(), key: crypto.randomUUID(), file: new Blob(['jpeg'], {type: 'image/jpeg'})})),
+    video: {key: crypto.randomUUID(), file: new Blob(['webm'], {type: 'video/webm'})},
+    selfie: {key: crypto.randomUUID(), file: new Blob(['jpeg'], {type: 'image/jpeg'})},
+    submitKey: crypto.randomUUID(),
+  };
+  let sent = 0;
+  const flaky = new CredflareSession({session_id: '00000000-0000-4000-8000-000000000001', token: 'test-session-token', api_base_url: base, expires_at: '2030-01-01T00:00:00Z'}, (url, init) => {
+    if (++sent === 2) return Promise.reject(new TypeError('fetch failed'));
+    return fetch(url, init);
+  });
+  const dropped = await sendLivenessEvidence(flaky, evidence).catch(error => error);
+  assert.ok(dropped instanceof CredflareError);
+  assert.equal(dropped.status, 0);
+  assert.equal(evidence.gestures[0].fileId, 3);
+  assert.equal(evidence.gestures[1].fileId, undefined);
+  const before = calls.length;
+  await sendLivenessEvidence(flaky, evidence);
+  assert.deepEqual(calls.slice(before).map(call => call.headers['x-idempotency-key']), [evidence.gestures[1].key, evidence.gestures[2].key, evidence.video.key, evidence.selfie.key, evidence.submitKey]);
 });
 
 test('submits a location fix with its metadata', async () => {
