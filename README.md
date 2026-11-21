@@ -77,7 +77,7 @@ Liveness asks the server for a challenge, shows a mirrored front camera preview 
 
 Face signals come from a swappable provider (`FaceSignalProvider`). The browser default is MediaPipe Face Landmarker from `@credflare/sdk-javascript/mediapipe`, loaded only when liveness starts. Install `@mediapipe/tasks-vision` 0.10.32 (an optional peer dependency) in apps that collect liveness. Set `wasmBaseUrl` and `modelAssetPath` to serve the runtime and model yourself; the defaults load them from public CDNs. Eye openness is `1 - mean(eyeBlinkLeft, eyeBlinkRight)`, smile is `mean(mouthSmileLeft, mouthSmileRight)`, yaw is `atan2(m8, m10)` and pitch is `asin(m9)` from the facial transformation matrix, in degrees.
 
-Location shows a consent screen (naming a reference place by its label when the profile has one), requests a high accuracy fix with `navigator.geolocation`, retries up to the spec attempts until the fix meets `max_accuracy_m` and `max_age_s`, then sends it with `provider: "browser"` and `is_mock: null`. Server rejections are shown with their reason and a retry; a place requirement rejection names the place. No geocoding or IP lookup is called.
+Location shows a consent screen (naming a reference place by its label when the profile has one), requests a high accuracy fix with `navigator.geolocation`, retries up to the spec attempts until the fix meets `max_accuracy_m` and `max_age_s`, then sends it with `provider: "browser"` and `is_mock: null`. Server rejections are recognised by their `code` (exposed on `CredflareError.code`) and shown with the matching copy and a retry; a place requirement rejection names the place. No geocoding or IP lookup is called.
 
 Browser permissions: camera (no microphone) and location. Serve the page over HTTPS.
 
