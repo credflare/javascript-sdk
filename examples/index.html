@@ -8,7 +8,7 @@
 <script type="module">
 import {mountRemainingSteps} from '/dist/browser.js';
 import {createMediaPipeProvider} from '/dist/mediapipe.js';
-import {CredflareSession, captureSteps, methodSummary, text, verifierName, iconSvgs, nextStep} from '/dist/index.js';
+import {CredflareSession, captureSteps, methodSummary, text, verifierName, iconSvgs, nextStep, documentsNextKey} from '/dist/index.js';
 const status=document.querySelector('#status'),capture=document.querySelector('#capture'),start=document.querySelector('#start');
 const config=await (await fetch('/config.json')).json();
 const provider=createMediaPipeProvider({wasmBaseUrl:'/vendor/mediapipe/wasm',modelAssetPath:config.faceModel});
@@ -27,6 +27,7 @@ function showDocuments(){
  document.querySelector('#title').textContent=text('documents.title');document.querySelector('#title').hidden=false;
  document.querySelector('#intro').textContent=text('documents.requested_by',{verifier:verifierName(info)});document.querySelector('#intro').hidden=false;
  status.textContent='';
+ const nextKey=documentsNextKey(info);if(nextKey){const next=document.createElement('p');next.className='next';next.textContent=text(nextKey);capture.append(next);}
  for(const requirement of info.profile.document_requirements){const button=document.createElement('button');button.className='doc';button.innerHTML=iconSvgs.id_card;const label=document.createElement('span');label.textContent=`${requirement.document_type.name} · ${methodSummary(requirement)}`;button.append(label);button.insertAdjacentHTML('beforeend',iconSvgs.chevron_right);button.onclick=()=>captureDocument(requirement);capture.append(button);}
 }
 function captureDocument(requirement){

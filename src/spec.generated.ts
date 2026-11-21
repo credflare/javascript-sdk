@@ -1,9 +1,9 @@
 // GENERATED FILE, DO NOT EDIT.
-// Source: credflare sdk-spec 1.0.0 (4cd1169538d1). Regenerate with scripts/generate.mjs.
+// Source: credflare sdk-spec 1.0.0 (1ee014f4a1df). Regenerate with scripts/generate.mjs.
 /* eslint-disable */
 
 export const specVersion = "1.0.0" as const;
-export const specHash = "4cd1169538d1" as const;
+export const specHash = "1ee014f4a1df" as const;
 
 export const liveness = {
   "version": 1,
@@ -293,6 +293,9 @@ export const copy = {
     "documents.method_both": "Photo and saved file",
     "documents.unavailable": "Not available in this app. Contact {verifier}.",
     "documents.selfie_next": "After your documents, you will take a selfie.",
+    "documents.location_next": "After your documents, you will share your location.",
+    "documents.selfie_location_next": "After your documents, you will take a selfie and share your location.",
+    "documents.location_selfie_next": "After your documents, you will share your location and take a selfie.",
     "documents.host_steps_next": "After your documents, the app will guide you through the remaining steps.",
     "capture.side_front": "Front",
     "capture.side_back": "Back",
@@ -403,6 +406,7 @@ export const copy = {
     "location.place.need_within_all": "You need to be at each of these places: {places}.",
     "location.place.need_outside": "You need to be away from {place}.",
     "location.place.need_outside_all": "You need to be away from these places: {places}.",
+    "location.place.need_outside_any": "You need to be away from at least one of these places: {places}.",
     "location.place.not_matched_within": "You do not seem to be at {place} yet. Move closer, then try again.",
     "location.place.not_matched_outside": "You seem to be too close to {place}. Move away, then try again.",
     "location.place.not_precise": "Your location is not precise enough to check this place. Move near a window or outside, then try again.",

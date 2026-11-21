@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {requiresSelfie, requiresFacial, requiresLocation, needsHostSteps, selfieFileTypes, nextStep} from '../dist/index.js';
+import {requiresSelfie, requiresFacial, requiresLocation, needsHostSteps, selfieFileTypes, nextStep, documentsNextKey} from '../dist/index.js';
 const load = async name => JSON.parse(await readFile(new URL(`./fixtures/${name}.json`, import.meta.url))).data;
 
 test('the actual configured requirements select facial collection and clear after submission', async () => {
@@ -32,4 +32,16 @@ test('liveness and location run inside the SDK in profile order', async () => {
   assert.equal(nextStep(afterFacial), 'location_verification');
   const withForm = {...info, profile: {...info.profile, verification_requirements: [], form_schema: [{key: 'full_name', label: 'Full name', type: 'text', required: true}]}};
   assert.equal(nextStep(withForm), 'host');
+});
+
+test('the documents list names the in app steps that follow, in profile order', async () => {
+  const base = await load('combined-session');
+  const withSteps = types => ({...base, profile: {...base.profile, form_schema: [], verification_requirements: types.map((verification_type, id) => ({id, verification_type, configuration: {}}))}});
+  assert.equal(documentsNextKey(withSteps(['facial_verification'])), 'documents.selfie_next');
+  assert.equal(documentsNextKey(withSteps(['location_verification'])), 'documents.location_next');
+  assert.equal(documentsNextKey(withSteps(['facial_verification', 'location_verification'])), 'documents.selfie_location_next');
+  assert.equal(documentsNextKey(withSteps(['location_verification', 'facial_verification'])), 'documents.location_selfie_next');
+  assert.equal(documentsNextKey(withSteps([])), null);
+  assert.equal(documentsNextKey({...withSteps([]), profile: {...withSteps([]).profile, form_schema: [{name: 'phone'}]}}), 'documents.host_steps_next');
+  assert.equal(documentsNextKey({...withSteps(['facial_verification']), profile: {...withSteps(['facial_verification']).profile, form_schema: [{name: 'phone'}]}}), 'documents.selfie_next');
 });
