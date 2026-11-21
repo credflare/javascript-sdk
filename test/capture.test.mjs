@@ -23,7 +23,7 @@ test('steps carry side and source labels', async () => {
 });
 test('a requirement without capture_method follows an upload document type', async () => {
   const requirement = await fixture('session');
-  assert.equal(requirement.capture_method, undefined);
+  delete requirement.capture_method;
   assert.equal(capturePolicy(requirement), 'upload');
   assert.equal(methodSummary(requirement), 'Saved files');
 });

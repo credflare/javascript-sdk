@@ -1,23 +1,35 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {requiresSelfie, needsHostSteps, selfieFileTypes} from '../dist/index.js';
-test('the actual configured requirements select selfie collection and clear after submission', async () => {
-  const info = JSON.parse(await readFile(new URL('./fixtures/facial-session.json', import.meta.url))).data;
+import {requiresSelfie, requiresFacial, requiresLocation, needsHostSteps, selfieFileTypes, nextStep} from '../dist/index.js';
+const load = async name => JSON.parse(await readFile(new URL(`./fixtures/${name}.json`, import.meta.url))).data;
+
+test('the actual configured requirements select facial collection and clear after submission', async () => {
+  const info = await load('facial-session');
   assert.equal(requiresSelfie(info), true);
   assert.equal(needsHostSteps(info), false);
+  assert.equal(nextStep(info), 'facial_verification');
   assert.deepEqual(selfieFileTypes(info), ['jpg', 'png', 'webp']);
-  const complete = JSON.parse(await readFile(new URL('./fixtures/facial-complete.json', import.meta.url))).data;
+  const complete = await load('facial-complete');
   assert.equal(requiresSelfie(complete), false);
-  assert.equal(needsHostSteps(complete), false);
-  assert.equal(complete.capabilities.liveness, false);
+  assert.equal(nextStep(complete), 'done');
 });
 
-test('combined cases retain the selfie requirement after their documents are received', async () => {
-  const initial = JSON.parse(await readFile(new URL('./fixtures/combined-session.json', import.meta.url))).data;
-  const next = JSON.parse(await readFile(new URL('./fixtures/combined-after-document.json', import.meta.url))).data;
-  assert.equal(initial.profile.document_requirements.length, 1);
-  assert.equal(requiresSelfie(initial), true);
-  assert.equal(next.profile.document_requirements.length, 0);
-  assert.equal(requiresSelfie(next), true);
+test('combined cases keep the facial requirement after their documents are received', async () => {
+  const initial = await load('combined-session');
+  const next = await load('combined-after-document');
+  assert.equal(nextStep(initial), 'documents');
+  assert.equal(requiresFacial(initial), true);
+  assert.equal(nextStep(next), 'facial_verification');
+});
+
+test('liveness and location run inside the SDK in profile order', async () => {
+  const info = await load('capture-session');
+  assert.equal(nextStep(info), 'facial_verification');
+  assert.equal(requiresLocation(info), true);
+  assert.equal(needsHostSteps(info), false);
+  const afterFacial = {...info, profile: {...info.profile, verification_requirements: info.profile.verification_requirements.slice(1)}};
+  assert.equal(nextStep(afterFacial), 'location_verification');
+  const withForm = {...info, profile: {...info.profile, verification_requirements: [], form_schema: [{key: 'full_name', label: 'Full name', type: 'text', required: true}]}};
+  assert.equal(nextStep(withForm), 'host');
 });

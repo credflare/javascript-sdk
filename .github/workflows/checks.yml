@@ -9,9 +9,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: credflare/sdk-spec
+          path: .sdk-spec
       - uses: actions/setup-node@v4
         with:
           node-version: '26'
           cache: npm
       - run: npm ci
+      - run: node .sdk-spec/scripts/generate.mjs --target ts --out src/spec.generated.ts --check
+      - run: node tool/check-fixtures.mjs .sdk-spec
       - run: npm test

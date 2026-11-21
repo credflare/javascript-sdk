@@ -1,3 +1,6 @@
+import type { GestureName } from './spec.generated.js';
+import type { FaceProviderName } from './engine.js';
+import type { VerificationRequirement } from './settings.js';
 export interface SessionDescriptor {
   session_id: string;
   token: string;
@@ -29,8 +32,8 @@ export interface SessionInfo {
   requester: { name: string; logo_url: string | null } | null;
   brand: Record<string, unknown> | null;
   upload_limits: { max_file_size_bytes: number; allowed_file_types: string[]; max_uploads_per_requirement: number };
-  profile: { name: string | null; form_schema: FormField[] | null; document_requirements: DocumentRequirement[]; verification_requirements: Array<{ verification_type: string }> } | null;
-  capabilities: { trusted_camera: boolean; liveness: boolean; deepfake_detection: boolean };
+  profile: { name: string | null; form_schema: FormField[] | null; document_requirements: DocumentRequirement[]; verification_requirements: VerificationRequirement[] } | null;
+  capabilities: { trusted_camera: boolean; liveness: boolean | 'challenge'; deepfake_detection: boolean };
 }
 export interface UploadedEvidence {
   id: number;
@@ -39,11 +42,47 @@ export interface UploadedEvidence {
   mime_type: string;
   size: number;
 }
+export interface LivenessChallenge {
+  challenge_id: string;
+  gestures: GestureName[];
+  expires_at: string;
+  record_video: boolean;
+  max_video_seconds: number;
+}
+export type BiometricUploadType = 'gesture' | 'liveness_video' | 'selfie';
+export type UploadFile = Blob | { uri: string; name: string; type: string };
+export interface BiometricUpload {
+  type: BiometricUploadType;
+  challengeId: string;
+  gesture?: GestureName;
+  file: UploadFile;
+  filename?: string;
+}
+export interface FacialMetadata {
+  provider: FaceProviderName;
+  liveness_results: Array<{ challenge: GestureName; completed: boolean; timestamp: string }>;
+  face_detection: { detected: boolean; face_count: number; is_centered: boolean; is_correct_size: boolean };
+  captured_at: string;
+}
+export interface FacialSubmission {
+  type: 'facial_verification';
+  challenge_id: string;
+  image_file_id: number;
+  gesture_file_ids: number[];
+  video_file_id?: number | null;
+  metadata: FacialMetadata;
+}
+export interface LocationSubmission {
+  type: 'location_verification';
+  latitude: number;
+  longitude: number;
+  metadata: { accuracy: number | null; altitude: number | null; fix_time: string; is_mock: boolean | null; provider: 'gps' | 'network' | 'fused' | 'browser'; captured_at: string };
+}
 export type Submission =
   | { type: 'document_verification'; document_type_id: number; file_id: number; back_file_id?: number }
   | { type: 'document_verification'; document_type_id: number; evidence: Array<{file_id:number;side:'front'|'back';source:'camera'|'upload'}> }
-  | { type: 'facial_verification'; image_file_id: number }
-  | { type: 'location_verification'; latitude: number; longitude: number }
+  | FacialSubmission
+  | LocationSubmission
   | { type: 'form_submission'; fields: Record<string, unknown> };
 export type Fetch = typeof globalThis.fetch;
 export type CredflareErrorType = 'network' | 'session_unavailable' | 'verification_closed' | 'validation' | 'api';
@@ -86,6 +125,11 @@ export async function request<T>(fetcher: Fetch, url: string, init: RequestInit)
   if (!('data' in body)) throw new CredflareError('Credflare returned an invalid response.', response.status);
   return body.data as T;
 }
+function defaultFilename(input: BiometricUpload): string {
+  const type = input.file instanceof Blob ? input.file.type : '';
+  const extension = type === 'video/webm' ? 'webm' : type === 'video/mp4' ? 'mp4' : type === 'video/quicktime' ? 'mov' : type === 'image/png' ? 'png' : type === 'image/webp' ? 'webp' : 'jpg';
+  return `${input.type === 'gesture' ? input.gesture : input.type === 'liveness_video' ? 'liveness' : 'selfie'}.${extension}`;
+}
 export class CredflareSession {
   private readonly base: string;
   constructor(private session: SessionDescriptor, private readonly fetcher: Fetch = globalThis.fetch) {
@@ -110,10 +154,44 @@ export class CredflareSession {
   submit(submission: Submission, key: string, signal?: AbortSignal): Promise<{ id: number }> {
     return this.call('POST', '/submit', JSON.stringify(submission), key, signal);
   }
+  createLivenessChallenge(key: string, signal?: AbortSignal): Promise<LivenessChallenge> {
+    return this.call('POST', '/liveness-challenges', undefined, key, signal);
+  }
+  uploadBiometric(input: BiometricUpload, key: string, signal?: AbortSignal): Promise<UploadedEvidence> {
+    if (input.type === 'gesture' && !input.gesture) throw new Error('A gesture upload needs the gesture name.');
+    const form = new FormData();
+    form.append('type', input.type);
+    form.append('challenge_id', input.challengeId);
+    if (input.type === 'gesture') form.append('gesture', input.gesture!);
+    form.append('capture_source', 'camera');
+    if (typeof Blob !== 'undefined' && input.file instanceof Blob) form.append('file', input.file, input.filename ?? defaultFilename(input));
+    else form.append('file', input.file as unknown as Blob);
+    return this.upload('biometrics', form, key, signal);
+  }
+  submitFacial(submission: Omit<FacialSubmission, 'type'>, key: string, signal?: AbortSignal): Promise<{ id: number }> {
+    return this.submit({ type: 'facial_verification', ...submission }, key, signal);
+  }
+  submitLocation(submission: Omit<LocationSubmission, 'type'>, key: string, signal?: AbortSignal): Promise<{ id: number }> {
+    return this.submit({ type: 'location_verification', ...submission }, key, signal);
+  }
   cancel(signal?: AbortSignal): Promise<null> { return this.call('DELETE', '', undefined, undefined, signal); }
 }
 
 export {captureSteps, capturePolicy, isCaptureSupported, methodSummary} from './capture.js';
 export type {CaptureSource, CaptureStep, CapturePolicy} from './capture.js';
 
-export {requiresSelfie, needsHostSteps, selfieFileTypes} from './workflow.js';
+export {requiresSelfie, requiresFacial, requiresLocation, needsHostSteps, selfieFileTypes, nextStep} from './workflow.js';
+export type {FlowStep} from './workflow.js';
+export * from './spec.generated.js';
+export {text, verifierName} from './copy.js';
+export type {CopyValues} from './copy.js';
+export {facialSettings, locationSettings, parseFacialSettings, parseLocationSettings} from './settings.js';
+export type {FacialSettings, LocationSettings, LocationReference, ReferencePlaceLabel, VerificationRequirement} from './settings.js';
+export {createChallengeRun, createGestureRun, createPositionGate, gestureCopyKey, positionCopyKey, positionStatus, resolveThresholds, runTrace, testStep, defaultLiveness} from './engine.js';
+export type {ChallengeStage, ChallengeUpdate, FaceBox, FaceProviderName, FaceSample, GestureResult, GestureStep, LivenessRules, LivenessTrace, PositionResult, PositionStatus} from './engine.js';
+export {createReplayProvider} from './faces.js';
+export type {FaceSignalProvider} from './faces.js';
+export {acquireFix, fixProblem, locationCopy, locationErrorKey, locationSubmission, LocationError} from './location.js';
+export type {LocationErrorCode, LocationFix, LocationProvider} from './location.js';
+export {facialMetadata, livenessErrorMessage, sendLivenessEvidence} from './liveness.js';
+export type {GestureEvidence, LivenessEvidence, PendingUpload} from './liveness.js';
