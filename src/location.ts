@@ -99,12 +99,19 @@ export function locationCopy(settings: LocationSettings | null, verifier: string
   return {title: text('location.title'), need: text(key, {places: joinLabels(labels)}), why};
 }
 
-export const referenceRejectionMessage = 'Your location does not meet the place requirement for this verification.';
-
-export function locationRejection(status: number, message: string, settings: LocationSettings | null): string | null {
+export function locationRejection(code: string | null, settings: LocationSettings | null): string | null {
   const reference = settings?.reference;
-  if (status !== 422 || message !== referenceRejectionMessage || !reference?.places.length) return null;
-  return text(reference.rule === 'outside' ? 'location.place.not_matched_outside' : 'location.place.not_matched_within', {
-    place: joinLabels(reference.places.map(place => place.label)),
-  });
+  const placed = !!reference?.places.length;
+  switch (code) {
+    case 'location.reference_not_matched':
+      if (!placed) return null;
+      return text(reference!.rule === 'outside' ? 'location.place.not_matched_outside' : 'location.place.not_matched_within', {
+        place: joinLabels(reference!.places.map(place => place.label)),
+      });
+    case 'location.accuracy': return text(placed ? 'location.place.not_precise' : 'location.low_accuracy');
+    case 'location.stale': return text('location.stale');
+    case 'location.mock': return text('location.mock_detected');
+    case 'location.ip_country': return text('location.ip_country_mismatch');
+    default: return null;
+  }
 }

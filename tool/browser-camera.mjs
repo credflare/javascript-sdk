@@ -219,7 +219,7 @@ try {
   await screenshot('07-location-found');
   await click('Send location');
   if (!live) {
-    await until(`document.querySelector('.cf-notice')?.textContent.includes('The location is not accurate enough. Move to an open area and try again.')`);
+    await until(`document.querySelector('.cf-notice')?.textContent.includes('Your location is not precise enough to check this place.')`);
     await screenshot('08-location-rejected');
     await click('Send location');
   }

@@ -58,6 +58,10 @@ export async function sendLivenessEvidence(
   }, evidence.submitKey, signal);
 }
 
+const challengeCodes = ['liveness.challenge_expired', 'liveness.challenge_invalid', 'liveness.challenge_used', 'liveness.frame_out_of_window'];
+export function challengeRejected(error: unknown): boolean {
+  return error instanceof CredflareError && error.status === 422 && challengeCodes.includes(error.code ?? '');
+}
 export function livenessErrorMessage(error: unknown, fallback: string = text('errors.generic')): string {
   if (error instanceof CredflareError) {
     if (error.status === 401) return text('errors.session_expired');

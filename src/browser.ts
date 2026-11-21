@@ -9,7 +9,7 @@ import type {FaceProviderName, FaceSample} from './engine.js';
 import type {FaceSignalProvider} from './faces.js';
 import {acquireFix, LocationError, locationCopy, locationErrorKey, locationRejection, locationSubmission} from './location.js';
 import type {LocationFix} from './location.js';
-import {livenessErrorMessage, sendLivenessEvidence} from './liveness.js';
+import {challengeRejected, livenessErrorMessage, sendLivenessEvidence} from './liveness.js';
 import type {GestureEvidence, LivenessEvidence} from './liveness.js';
 import {iconSvgs, liveness as livenessSpec, location as locationSpec, tokens} from './spec.generated.js';
 import type {CopyKey, IconName} from './spec.generated.js';
@@ -281,8 +281,7 @@ export function mountLiveness(element: HTMLElement, session: CredflareSession, i
         if (!disposed) options.onSubmitted();
       } catch (cause) {
         if (disposed) return;
-        const expired = cause instanceof CredflareError && cause.status === 422 && /challenge/i.test(cause.message);
-        if (expired) { URL.revokeObjectURL(url); evidence = undefined; return failed(livenessErrorMessage(cause)); }
+        if (challengeRejected(cause)) { URL.revokeObjectURL(url); evidence = undefined; return failed(say('liveness.expired')); }
         send.disabled = retake.disabled = false;
         status.textContent = '';
         review(photo, livenessErrorMessage(cause, say('errors.send_selfie_failed')));
@@ -370,7 +369,7 @@ export function mountLocation(element: HTMLElement, session: CredflareSession, i
       } catch (cause) {
         if (disposed) return;
         if (cause instanceof CredflareError && cause.status === 422) submitKey = crypto.randomUUID();
-        found(fix, cause instanceof CredflareError && cause.status !== 0 ? locationRejection(cause.status, cause.message, settings) ?? livenessErrorMessage(cause) : say('errors.send_location_failed'));
+        found(fix, cause instanceof CredflareError && cause.status !== 0 ? locationRejection(cause.code, settings) ?? livenessErrorMessage(cause) : say('errors.send_location_failed'));
       }
     };
     render(...header(), node('p', 'cf-hint', say('location.found_title')), node('p', 'cf-body', say('location.found_body')), card, ...(error ? [notice(error)] : []), send, retry);

@@ -1,3 +1,4 @@
+import type {ErrorCode} from './spec.generated.js';
 import type { GestureName } from './spec.generated.js';
 import type { FaceProviderName } from './engine.js';
 import type { VerificationRequirement } from './settings.js';
@@ -90,7 +91,7 @@ export class CredflareError extends Error {
   get type(): CredflareErrorType {
     return this.status === 0 ? 'network' : this.status === 401 ? 'session_unavailable' : this.status === 409 ? 'verification_closed' : this.status === 422 ? 'validation' : 'api';
   }
-  constructor(message: string, public readonly status: number, public readonly errors: unknown = []) {
+  constructor(message: string, public readonly status: number, public readonly errors: unknown = [], public readonly code: ErrorCode | (string & {}) | null = null) {
     super(message);
     this.name = 'CredflareError';
   }
@@ -120,7 +121,8 @@ export async function request<T>(fetcher: Fetch, url: string, init: RequestInit)
   }
   if (!response.ok || body.success !== true) {
     const message = 'message' in body && typeof body.message === 'string' ? body.message : 'Request failed.';
-    throw new CredflareError(message, response.status, 'errors' in body ? body.errors : []);
+    const code = 'code' in body && typeof body.code === 'string' ? body.code : null;
+    throw new CredflareError(message, response.status, 'errors' in body ? body.errors : [], code);
   }
   if (!('data' in body)) throw new CredflareError('Credflare returned an invalid response.', response.status);
   return body.data as T;
@@ -191,7 +193,7 @@ export {createChallengeRun, createGestureRun, createPositionGate, gestureCopyKey
 export type {ChallengeStage, ChallengeUpdate, FaceBox, FaceProviderName, FaceSample, GestureResult, GestureStep, LivenessRules, LivenessTrace, PositionResult, PositionStatus} from './engine.js';
 export {createReplayProvider} from './faces.js';
 export type {FaceSignalProvider} from './faces.js';
-export {acquireFix, fixProblem, locationCopy, locationErrorKey, locationRejection, locationSubmission, referenceRejectionMessage, LocationError} from './location.js';
+export {acquireFix, fixProblem, locationCopy, locationErrorKey, locationRejection, locationSubmission, LocationError} from './location.js';
 export type {LocationErrorCode, LocationFix, LocationProvider} from './location.js';
-export {facialMetadata, livenessErrorMessage, sendLivenessEvidence} from './liveness.js';
+export {challengeRejected, facialMetadata, livenessErrorMessage, sendLivenessEvidence} from './liveness.js';
 export type {GestureEvidence, LivenessEvidence, PendingUpload} from './liveness.js';
