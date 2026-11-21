@@ -20,13 +20,27 @@
     "./browser": {
       "types": "./dist/browser.d.ts",
       "import": "./dist/browser.js"
+    },
+    "./mediapipe": {
+      "types": "./dist/mediapipe.d.ts",
+      "import": "./dist/mediapipe.js"
     }
   },
   "scripts": {
     "build": "tsc",
-    "test": "npm run build && node --test test/*.test.mjs"
+    "test": "npm run build && node --test test/*.test.mjs",
+    "check:spec": "node ../sdk-spec/scripts/generate.mjs --target ts --out src/spec.generated.ts --check && node tool/check-fixtures.mjs ../sdk-spec"
   },
   "devDependencies": {
+    "@mediapipe/tasks-vision": "0.10.32",
     "typescript": "7.0.2"
+  },
+  "peerDependencies": {
+    "@mediapipe/tasks-vision": "0.10.32"
+  },
+  "peerDependenciesMeta": {
+    "@mediapipe/tasks-vision": {
+      "optional": true
+    }
   }
 }
