@@ -1,9 +1,9 @@
 // GENERATED FILE, DO NOT EDIT.
-// Source: credflare sdk-spec 1.0.0 (1ee014f4a1df). Regenerate with scripts/generate.mjs.
+// Source: credflare sdk-spec 1.0.0 (ef15c85fc748). Regenerate with scripts/generate.mjs.
 /* eslint-disable */
 
 export const specVersion = "1.0.0" as const;
-export const specHash = "1ee014f4a1df" as const;
+export const specHash = "ef15c85fc748" as const;
 
 export const liveness = {
   "version": 1,
@@ -397,6 +397,8 @@ export const copy = {
     "location.timeout": "We could not find your location in time. Try again.",
     "location.low_accuracy": "Your location is not accurate enough yet. Move near a window or outside, then try again.",
     "location.mock_detected": "An app or setting is changing your device location. Turn it off, then try again.",
+    "location.stale": "Your location reading is out of date. Try again to take a new one.",
+    "location.ip_country_mismatch": "Your internet connection seems to be in a different country from your location. Turn off any VPN or proxy, then try again.",
     "location.retry": "Try again",
     "location.retries_exhausted": "We could not get your location. Contact {verifier}.",
     "location.place.title_within": "Share your location at {place}",
@@ -451,6 +453,23 @@ export const copyPlaceholders = {
   "meters": "Accuracy radius in whole meters.",
   "place": "Label of a reference place, for example Head office. Never coordinates.",
   "places": "Labels of several reference places, joined with a comma and a space."
+} as const;
+
+export const errorCodes = {
+  "location.accuracy": "Accuracy is missing or larger than max_accuracy_m",
+  "location.stale": "fix_time is missing, older than max_age_s plus clock_skew_s, or in the future",
+  "location.mock": "is_mock is true and mock_location is reject",
+  "location.ip_country": "The IP country does not match and ip_country is reject",
+  "location.reference_not_matched": "The place rule failed and on_mismatch is reject",
+  "liveness.challenge_invalid": "The challenge is unknown, belongs to another case or was replaced",
+  "liveness.challenge_expired": "The challenge expired",
+  "liveness.challenge_used": "The challenge was already used",
+  "liveness.gesture_mismatch": "A gesture frame is missing, extra, out of order or for a gesture the challenge does not include",
+  "liveness.frame_out_of_window": "A file was uploaded before the challenge was issued or after it expired",
+  "liveness.not_camera": "Evidence was not uploaded with capture_source=camera for this challenge",
+  "liveness.video_missing": "record_video is on and no video for this challenge was sent",
+  "liveness.video_too_long": "The video is longer than max_video_seconds plus one second",
+  "liveness.video_unreadable": "The server cannot read the video duration"
 } as const;
 
 export const tokens = {
@@ -982,6 +1001,7 @@ export const iconSvgs: Record<IconName, string> = {
 export type IconName = keyof typeof icons;
 export type Locale = keyof typeof copy;
 export type CopyKey = keyof (typeof copy)["en"];
+export type ErrorCode = keyof typeof errorCodes;
 export type GestureName = keyof (typeof liveness)["gestures"];
 export type LivenessProvider = keyof (typeof liveness)["thresholds"];
 export type ThresholdKey = keyof (typeof liveness)["thresholds"]["default"];
