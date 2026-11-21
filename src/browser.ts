@@ -7,7 +7,7 @@ import {facialSettings, locationSettings} from './settings.js';
 import {createChallengeRun} from './engine.js';
 import type {FaceProviderName, FaceSample} from './engine.js';
 import type {FaceSignalProvider} from './faces.js';
-import {acquireFix, LocationError, locationCopy, locationErrorKey, locationSubmission} from './location.js';
+import {acquireFix, LocationError, locationCopy, locationErrorKey, locationRejection, locationSubmission} from './location.js';
 import type {LocationFix} from './location.js';
 import {livenessErrorMessage, sendLivenessEvidence} from './liveness.js';
 import type {GestureEvidence, LivenessEvidence} from './liveness.js';
@@ -370,7 +370,7 @@ export function mountLocation(element: HTMLElement, session: CredflareSession, i
       } catch (cause) {
         if (disposed) return;
         if (cause instanceof CredflareError && cause.status === 422) submitKey = crypto.randomUUID();
-        found(fix, cause instanceof CredflareError && cause.status !== 0 ? livenessErrorMessage(cause) : say('errors.send_location_failed'));
+        found(fix, cause instanceof CredflareError && cause.status !== 0 ? locationRejection(cause.status, cause.message, settings) ?? livenessErrorMessage(cause) : say('errors.send_location_failed'));
       }
     };
     render(...header(), node('p', 'cf-hint', say('location.found_title')), node('p', 'cf-body', say('location.found_body')), card, ...(error ? [notice(error)] : []), send, retry);

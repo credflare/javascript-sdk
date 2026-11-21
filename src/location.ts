@@ -89,19 +89,22 @@ export function locationCopy(settings: LocationSettings | null, verifier: string
   const reference = settings?.reference;
   if (!reference || !reference.places.length) return {title: text('location.title'), need: null, why};
   const labels = reference.places.map(place => place.label);
-  const place = labels[0]!;
-  if (reference.rule === 'outside') {
-    return {
-      title: labels.length === 1 ? text('location.place.title_outside', {place}) : text('location.title'),
-      need: labels.length === 1 ? text('location.place.need_outside', {place}) : text('location.place.need_outside_all', {places: joinLabels(labels)}),
-      why,
-    };
+  const outside = reference.rule === 'outside';
+  if (labels.length === 1) {
+    return {title: text(outside ? 'location.place.title_outside' : 'location.place.title_within', {place: labels[0]!}), need: null, why};
   }
-  return {
-    title: labels.length === 1 ? text('location.place.title_within', {place}) : text('location.title'),
-    need: labels.length === 1
-      ? text('location.place.need_within', {place})
-      : text(reference.match === 'all' ? 'location.place.need_within_all' : 'location.place.need_within_any', {places: joinLabels(labels)}),
-    why,
-  };
+  const key: CopyKey = outside
+    ? (reference.match === 'all' ? 'location.place.need_outside_all' : 'location.place.need_outside_any')
+    : (reference.match === 'all' ? 'location.place.need_within_all' : 'location.place.need_within_any');
+  return {title: text('location.title'), need: text(key, {places: joinLabels(labels)}), why};
+}
+
+export const referenceRejectionMessage = 'Your location does not meet the place requirement for this verification.';
+
+export function locationRejection(status: number, message: string, settings: LocationSettings | null): string | null {
+  const reference = settings?.reference;
+  if (status !== 422 || message !== referenceRejectionMessage || !reference?.places.length) return null;
+  return text(reference.rule === 'outside' ? 'location.place.not_matched_outside' : 'location.place.not_matched_within', {
+    place: joinLabels(reference.places.map(place => place.label)),
+  });
 }

@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {acquireFix, fixProblem, locationCopy, locationErrorKey, locationSettings, LocationError, location as spec, text} from '../dist/index.js';
+import {acquireFix, locationRejection, fixProblem, locationCopy, locationErrorKey, locationSettings, LocationError, location as spec, text} from '../dist/index.js';
 
 const settings = locationSettings((JSON.parse(await readFile(new URL('./fixtures/capture-session.json', import.meta.url))).data).profile.verification_requirements);
 const fix = (patch = {}) => ({latitude: 4.05, longitude: 9.76, accuracy: 20, altitude: null, fixTime: 1_000_000, isMock: false, provider: 'gps', ...patch});
@@ -34,9 +34,12 @@ test('a detected mock location stops the retries', async () => {
 });
 
 test('reference place copy uses labels only', () => {
-  assert.deepEqual(locationCopy(settings, 'Acme'), {title: 'Share your location at Head office', need: 'You need to be at Head office.', why: text('location.why', {verifier: 'Acme'})});
+  assert.deepEqual(locationCopy(settings, 'Acme'), {title: 'Share your location at Head office', need: null, why: text('location.why', {verifier: 'Acme'})});
   const outside = {...settings, reference: {rule: 'outside', match: 'all', places: [{label: 'Depot'}, {label: 'Port'}]}};
   assert.equal(locationCopy(outside, 'Acme').need, 'You need to be away from these places: Depot, Port.');
+  assert.equal(locationCopy({...settings, reference: {...outside.reference, match: 'any'}}, 'Acme').need, 'You need to be away from at least one of these places: Depot, Port.');
+  assert.equal(locationCopy({...settings, reference: {rule: 'within', match: 'any', places: [{label: 'Depot'}, {label: 'Port'}]}}, 'Acme').need, 'You need to be at one of these places: Depot, Port.');
+  assert.deepEqual(locationCopy({...settings, reference: {rule: 'outside', match: 'any', places: [{label: 'Depot'}]}}, 'Acme').title, 'Share your location away from Depot');
   assert.equal(locationCopy({...settings, reference: null}, 'Acme').title, 'Share your location');
 });
 
@@ -49,4 +52,14 @@ test('a transient fix failure counts as an attempt and permission denial stops a
   await assert.rejects(acquireFix(async () => { calls += 1; throw new LocationError('permission_denied'); }, settings), error => error.code === 'permission_denied');
   assert.equal(calls, 1);
   await assert.rejects(acquireFix(async () => { throw new LocationError('timeout'); }, settings), error => error.code === 'timeout');
+});
+
+test('the reference place rejection names the place', async () => {
+  const rejection = JSON.parse(await readFile(new URL('./fixtures/reference-rejection.json', import.meta.url)));
+  assert.equal(locationRejection(422, rejection.message, settings), 'You do not seem to be at Head office yet. Move closer, then try again.');
+  const outside = {...settings, reference: {rule: 'outside', match: 'any', places: [{label: 'Depot'}]}};
+  assert.equal(locationRejection(422, rejection.message, outside), 'You seem to be too close to Depot. Move away, then try again.');
+  const accuracy = JSON.parse(await readFile(new URL('./fixtures/location-rejection.json', import.meta.url)));
+  assert.equal(locationRejection(422, accuracy.message, settings), null);
+  assert.equal(locationRejection(422, rejection.message, {...settings, reference: null}), null);
 });

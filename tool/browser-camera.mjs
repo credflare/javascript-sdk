@@ -208,7 +208,7 @@ try {
   await until(`[...document.querySelectorAll('button')].some(b => b.textContent === 'Share location')`, 30000);
   const locationTexts = await texts();
   assert.ok(locationTexts.includes('Share your location at Head office'));
-  assert.ok(locationTexts.includes('You need to be at Head office.'));
+  assert.ok(!locationTexts.includes('You need to be at Head office.'));
   await screenshot('05-location-consent');
   await click('Share location');
   await until(`document.querySelector('.cf-notice')?.textContent.includes('not accurate enough')`, 30000);
