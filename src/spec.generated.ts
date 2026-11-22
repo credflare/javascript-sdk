@@ -1,9 +1,9 @@
 // GENERATED FILE, DO NOT EDIT.
-// Source: credflare sdk-spec 1.1.0 (b32704f91552). Regenerate with scripts/generate.mjs.
+// Source: credflare sdk-spec 1.1.0 (6824e65d1864). Regenerate with scripts/generate.mjs.
 /* eslint-disable */
 
 export const specVersion = "1.1.0" as const;
-export const specHash = "b32704f91552" as const;
+export const specHash = "6824e65d1864" as const;
 
 export const liveness = {
   "version": 1,
@@ -457,8 +457,16 @@ export const copy = {
     "questions.invalid_email": "Enter a valid email address.",
     "questions.invalid_phone": "Enter a valid phone number.",
     "questions.text_too_long": "Use at most 5000 characters.",
+    "handoff.action": "Continue on your phone",
+    "handoff.title": "Continue on your phone",
+    "handoff.body": "Scan this code with your phone camera to carry on there. The code works once and expires in {minutes} minutes.",
+    "handoff.expired": "This code has expired.",
+    "handoff.new_code": "Show a new code",
+    "handoff.link_invalid": "This link has expired or was already used. Open a new one on the device where you started.",
     "rejection.requested_by": "Requested by {verifier}.",
     "rejection.help": "If you need help, contact {verifier}.",
+    "rejection.help_email": "If you need help, contact {verifier} at {help_email}.",
+    "rejection.help_url": "If you need help, visit {help_url}.",
     "rejection.action.retry": "Try again",
     "rejection.action.restart": "Start again",
     "rejection.action.reenter_code": "Enter the code again",
@@ -545,7 +553,9 @@ export const copyPlaceholders = {
   "minutes": "Whole minutes, for example 10.",
   "seconds": "Whole seconds, for example 45.",
   "min": "Smallest number a question accepts.",
-  "max": "Largest number a question accepts."
+  "max": "Largest number a question accepts.",
+  "help_email": "requester.help_email from the session: an email address to write to for help.",
+  "help_url": "requester.help_url from the session: a web address for help. Show it as a link."
 } as const;
 
 export const errorCodes = {
@@ -583,6 +593,8 @@ export const rejections = {
   "version": 1,
   "requested_by": "rejection.requested_by",
   "help": "rejection.help",
+  "help_email": "rejection.help_email",
+  "help_url": "rejection.help_url",
   "actions": {
     "retry": {
       "label": "rejection.action.retry",
@@ -602,7 +614,7 @@ export const rejections = {
     },
     "wait": {
       "label": "rejection.action.wait",
-      "meaning": "Keep the code screen and enable sending a new code at resend_available_at from the last code request"
+      "meaning": "Keep the code screen and enable sending a new code at resend_available_at from the rejection, or from the last code request when the rejection has none"
     },
     "leave": {
       "label": "rejection.action.leave",
