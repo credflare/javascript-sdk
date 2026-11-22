@@ -1,17 +1,24 @@
 import {CredflareSession, CredflareError} from './index.js';
 import type {LivenessChallenge, SessionDescriptor, SessionInfo} from './index.js';
-import {nextStep} from './workflow.js';
+import {nextStep, receiptKey} from './workflow.js';
+import type {FlowStep} from './workflow.js';
+import {rejectionScreen} from './rejections.js';
+import type {RejectionScreen} from './rejections.js';
+import {answerProblems, answersPayload, visibleQuestions} from './questions.js';
+import type {Answers, Question} from './questions.js';
+import {codeDestinationProblem, normalizePhone, secondsUntil} from './codes.js';
+import type {CodeChannel, CodeRequest} from './index.js';
 import {text, verifierName} from './copy.js';
 import type {CopyValues} from './copy.js';
 import {facialSettings, locationSettings} from './settings.js';
 import {createChallengeRun} from './engine.js';
 import type {FaceProviderName, FaceSample} from './engine.js';
 import type {FaceSignalProvider} from './faces.js';
-import {acquireFix, LocationError, locationCopy, locationErrorKey, locationRejection, locationSubmission} from './location.js';
+import {acquireFix, LocationError, locationCopy, locationErrorKey, locationSubmission} from './location.js';
 import type {LocationFix} from './location.js';
-import {challengeRejected, livenessErrorMessage, sendLivenessEvidence} from './liveness.js';
+import {livenessErrorMessage, sendLivenessEvidence} from './liveness.js';
 import type {GestureEvidence, LivenessEvidence} from './liveness.js';
-import {iconSvgs, liveness as livenessSpec, location as locationSpec, tokens} from './spec.generated.js';
+import {iconSvgs, liveness as livenessSpec, location as locationSpec, requirements, tokens} from './spec.generated.js';
 import type {CopyKey, IconName} from './spec.generated.js';
 
 type Palette = Record<keyof typeof tokens.color.light, string>;
@@ -44,6 +51,17 @@ export function installStyles(doc: Document = document): void {
 .cf-oval{position:absolute;inset:12% 18%;border:3px solid var(--cf-primary);border-radius:50%;pointer-events:none}
 .cf-oval.cf-ok{border-color:var(--cf-success)}
 .cf-rec{position:absolute;top:${spacing.sm}px;left:50%;transform:translateX(-50%);background:var(--cf-surface);color:var(--cf-error);border-radius:${radius.pill}px;padding:${spacing.xxs}px ${spacing.sm}px;font-size:${type.chip.size}px}
+.cf-field{display:flex;flex-direction:column;align-items:stretch;gap:${spacing.xs}px;border:0;margin:0;padding:0;text-align:${tokens.text_align}}
+.cf-field legend{padding:0;margin:0 auto ${spacing.xs}px}
+.cf-label{font-size:${type.body.size}px;line-height:${type.body.line_height}px;font-weight:${type.subtitle.weight}}
+.cf-input{font:inherit;font-size:${type.body.size}px;min-height:${size.button_height}px;border:1px solid var(--cf-border);border-radius:${radius.md}px;background:var(--cf-surface);color:var(--cf-ink);padding:0 ${spacing.md}px;text-align:center;box-sizing:border-box;width:100%}
+textarea.cf-input{min-height:${size.button_height * 2}px;padding:${spacing.sm}px ${spacing.md}px}
+.cf-input[aria-invalid=true]{border-color:var(--cf-error)}
+.cf-code{letter-spacing:.4em;font-size:${type.title.size}px}
+.cf-choice{display:flex;align-items:center;justify-content:center;gap:${spacing.sm}px;min-height:${size.button_height}px;border:1px solid var(--cf-border);border-radius:${radius.md}px;padding:0 ${spacing.md}px;cursor:pointer}
+.cf-choice input{width:20px;height:20px;accent-color:var(--cf-primary)}
+.cf-field-error{font-size:${type.small.size}px;line-height:${type.small.line_height}px;color:var(--cf-error);margin:0}
+.cf-link{font:inherit;font-size:${type.small.size}px;background:none;border:0;color:var(--cf-primary);text-decoration:underline;cursor:pointer;padding:${spacing.xs}px}
 .cf-hint{font-size:${type.subtitle.size}px;line-height:${type.subtitle.line_height}px;font-weight:${type.subtitle.weight};margin:0;min-height:${type.subtitle.line_height * 2}px}
 [hidden]{display:none!important}`;
   doc.head.append(style);
@@ -74,6 +92,25 @@ function notice(message: string): HTMLElement {
 }
 const say = (key: CopyKey, values?: CopyValues) => text(key, values);
 
+export function rejectionView(screen: RejectionScreen, onAction?: () => void, iconName: IconName = 'error'): Node[] {
+  const box = node('div', 'cf-notice');
+  box.setAttribute('role', 'alert');
+  box.append(icon('error'), node('p', 'cf-body', screen.message));
+  const children: Node[] = [icon(iconName)];
+  if (screen.title) children.push(node('h2', 'cf-title', screen.title));
+  children.push(box, node('p', 'cf-small', screen.requestedBy), node('p', 'cf-small', screen.help));
+  if (onAction) {
+    const action = button(screen.actionLabel);
+    action.onclick = onAction;
+    children.push(action);
+  }
+  return children;
+}
+
+function fieldId(prefix: string): string {
+  return `cf-${prefix}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export function mountSession(element: HTMLElement, descriptor: SessionDescriptor, onReady: (session: CredflareSession, info: SessionInfo) => void): () => void {
   const abort = new AbortController();
   const session = new CredflareSession(descriptor);
@@ -89,6 +126,24 @@ export function mountSession(element: HTMLElement, descriptor: SessionDescriptor
     if (!abort.signal.aborted) status.textContent = error instanceof CredflareError ? livenessErrorMessage(error, say('errors.start_failed')) : say('errors.start_failed');
   });
   return () => { abort.abort(); element.replaceChildren(); };
+}
+
+export async function cameraPicker(stream: MediaStream, onChange: (deviceId: string) => void): Promise<HTMLSelectElement | null> {
+  if (!navigator.mediaDevices?.enumerateDevices) return null;
+  let cameras: MediaDeviceInfo[];
+  try { cameras = (await navigator.mediaDevices.enumerateDevices()).filter(device => device.kind === 'videoinput' && device.deviceId); } catch { return null; }
+  if (cameras.length < 2) return null;
+  const current = stream.getVideoTracks()[0]?.getSettings().deviceId;
+  const select = node('select', 'cf-input');
+  select.setAttribute('aria-label', say('common.change'));
+  cameras.forEach((camera, index) => {
+    const option = node('option', '', camera.label || String(index + 1));
+    option.value = camera.deviceId;
+    option.selected = camera.deviceId === current;
+    select.append(option);
+  });
+  select.onchange = () => onChange(select.value);
+  return select;
 }
 
 export interface LivenessOptions {
@@ -127,6 +182,7 @@ export function mountLiveness(element: HTMLElement, session: CredflareSession, i
   const abort = new AbortController();
   let disposed = false, stream: MediaStream | undefined, stopProvider: (() => void) | undefined, recorder: MediaRecorder | undefined, recordTimer: ReturnType<typeof setTimeout> | undefined;
   let evidence: LivenessEvidence | undefined;
+  let cameraId: string | undefined;
   const stopCamera = () => {
     stopProvider?.(); stopProvider = undefined;
     if (recordTimer) clearTimeout(recordTimer);
@@ -159,7 +215,8 @@ export function mountLiveness(element: HTMLElement, session: CredflareSession, i
     let challenge: LivenessChallenge;
     try {
       stopCamera();
-      stream = await navigator.mediaDevices.getUserMedia({audio: false, video: {facingMode: 'user', width: {ideal: 640}, height: {ideal: 480}}});
+      const size = {width: {ideal: 640}, height: {ideal: 480}};
+      stream = await navigator.mediaDevices.getUserMedia({audio: false, video: cameraId ? {deviceId: {exact: cameraId}, ...size} : {facingMode: 'user', ...size}});
     } catch (error) {
       const name = error instanceof DOMException ? error.name : '';
       return failed(say(name === 'NotAllowedError' ? 'errors.camera_denied_browser' : name === 'NotFoundError' || name === 'OverconstrainedError' ? 'errors.front_camera_required' : 'errors.camera_unavailable'));
@@ -177,7 +234,9 @@ export function mountLiveness(element: HTMLElement, session: CredflareSession, i
     const hint = node('p', 'cf-hint', say('liveness.position.no_face'));
     hint.setAttribute('role', 'status'); hint.setAttribute('aria-live', 'polite');
     const progress = node('p', 'cf-small', '');
-    render(node('h2', 'cf-title', say('liveness.title')), camera, hint, progress);
+    const picker = await cameraPicker(stream!, id => { cameraId = id; void run(); });
+    if (disposed) return stopCamera();
+    render(node('h2', 'cf-title', say('liveness.title')), camera, ...(picker ? [picker] : []), hint, progress);
     try { await video.play(); } catch { return failed(say('errors.camera_unavailable')); }
     const gestures: GestureEvidence[] = [];
     const frames: Promise<void>[] = [];
@@ -281,7 +340,10 @@ export function mountLiveness(element: HTMLElement, session: CredflareSession, i
         if (!disposed) options.onSubmitted();
       } catch (cause) {
         if (disposed) return;
-        if (challengeRejected(cause)) { URL.revokeObjectURL(url); evidence = undefined; return failed(say('liveness.expired')); }
+        if (cause instanceof CredflareError && cause.status === 422) {
+          URL.revokeObjectURL(url); evidence = undefined; stopCamera();
+          return render(...rejectionView(rejectionScreen(cause, {requester: info.requester}), () => void run(), 'selfie'));
+        }
         send.disabled = retake.disabled = false;
         status.textContent = '';
         review(photo, livenessErrorMessage(cause, say('errors.send_selfie_failed')));
@@ -368,8 +430,11 @@ export function mountLocation(element: HTMLElement, session: CredflareSession, i
         if (!disposed) options.onSubmitted();
       } catch (cause) {
         if (disposed) return;
-        if (cause instanceof CredflareError && cause.status === 422) submitKey = crypto.randomUUID();
-        found(fix, cause instanceof CredflareError && cause.status !== 0 ? locationRejection(cause.code, settings) ?? livenessErrorMessage(cause) : say('errors.send_location_failed'));
+        if (cause instanceof CredflareError && cause.status === 422) {
+          submitKey = crypto.randomUUID();
+          return render(...rejectionView(rejectionScreen(cause, {requester: info.requester, location: settings}), () => void locate(), 'location'));
+        }
+        found(fix, cause instanceof CredflareError && cause.status !== 0 ? livenessErrorMessage(cause) : say('errors.send_location_failed'));
       }
     };
     render(...header(), node('p', 'cf-hint', say('location.found_title')), node('p', 'cf-body', say('location.found_body')), card, ...(error ? [notice(error)] : []), send, retry);
@@ -377,6 +442,315 @@ export function mountLocation(element: HTMLElement, session: CredflareSession, i
 
   consent();
   return () => { disposed = true; abort.abort(); element.replaceChildren(); element.classList.remove('cf-root'); };
+}
+
+const countryCodes = 'AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HM HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS YE YT ZA ZM ZW'.split(' ');
+
+function countryOptions(): Array<[string, string]> {
+  let names: Intl.DisplayNames | null = null;
+  try { names = new Intl.DisplayNames([document.documentElement.lang || navigator.language || 'en'], {type: 'region'}); } catch { names = null; }
+  return countryCodes.map(code => [code, names?.of(code) ?? code] as [string, string]).sort((a, b) => a[1].localeCompare(b[1]));
+}
+
+export interface QuestionsOptions {
+  onSubmitted: (fields: Answers) => void;
+  earlier?: Answers;
+}
+
+export function mountQuestions(element: HTMLElement, session: CredflareSession, info: SessionInfo, options: QuestionsOptions): () => void {
+  installStyles();
+  element.classList.add('cf-root');
+  const schema: Question[] = info.profile?.form_schema ?? [];
+  const verifier = verifierName(info);
+  const abort = new AbortController();
+  const answers: Answers = {};
+  let disposed = false, submitKey = crypto.randomUUID(), shownErrors: Record<string, string> = {}, sending = false;
+  const form = node('form');
+  form.noValidate = true;
+  const fields = node('div');
+  fields.style.cssText = `display:flex;flex-direction:column;gap:${tokens.spacing.xl}px`;
+  const status = node('p', 'cf-small', '');
+  status.setAttribute('role', 'status');
+  const send = button(say('questions.send'));
+  send.type = 'submit';
+  const formError = node('div');
+  form.append(fields, formError, status, send);
+  const controls = new Map<string, HTMLElement>();
+
+  const changed = (key: string, value: unknown) => {
+    if (value === undefined) delete answers[key]; else answers[key] = value;
+    if (shownErrors[key]) delete shownErrors[key];
+    submitKey = crypto.randomUUID();
+    draw();
+  };
+
+  function control(question: Question, id: string, error: string | undefined): HTMLElement {
+    const value = answers[question.key];
+    const invalid = (input: HTMLElement) => { if (error) { input.setAttribute('aria-invalid', 'true'); input.setAttribute('aria-describedby', `${id}-error`); } };
+    if (question.type === 'consent') {
+      const label = node('label', 'cf-choice');
+      const input = node('input');
+      input.type = 'checkbox'; input.id = id; input.checked = value === true;
+      input.onchange = () => changed(question.key, input.checked);
+      invalid(input);
+      label.append(input, node('span', 'cf-body', question.label));
+      return label;
+    }
+    if (question.type === 'multi_select') {
+      const group = node('div');
+      group.style.cssText = `display:flex;flex-direction:column;gap:${tokens.spacing.sm}px`;
+      const selected = Array.isArray(value) ? value.map(String) : [];
+      for (const option of (question.options ?? []).map(String)) {
+        const label = node('label', 'cf-choice');
+        const input = node('input');
+        input.type = 'checkbox'; input.name = id; input.checked = selected.includes(option);
+        input.onchange = () => {
+          const next = (question.options ?? []).map(String).filter(item => item === option ? input.checked : selected.includes(item));
+          changed(question.key, next.length ? next : undefined);
+        };
+        label.append(input, node('span', 'cf-body', option));
+        group.append(label);
+      }
+      return group;
+    }
+    if (question.type === 'select' || question.type === 'single_select' || question.type === 'country') {
+      const select = node('select', 'cf-input');
+      select.id = id;
+      const empty = node('option', '', say(question.type === 'country' ? 'questions.choose_country' : 'questions.choose_one'));
+      empty.value = '';
+      select.append(empty);
+      const choices: Array<[string, string]> = question.type === 'country' ? countryOptions() : (question.options ?? []).map(option => [String(option), String(option)]);
+      for (const [optionValue, label] of choices) {
+        const option = node('option', '', label);
+        option.value = optionValue;
+        option.selected = value === optionValue;
+        select.append(option);
+      }
+      select.onchange = () => changed(question.key, select.value || undefined);
+      invalid(select);
+      return select;
+    }
+    const input = question.type === 'textarea' ? node('textarea', 'cf-input') : node('input', 'cf-input');
+    input.id = id;
+    if (input instanceof HTMLInputElement) {
+      input.type = question.type === 'email' ? 'email' : question.type === 'date' ? 'date' : question.type === 'phone' || question.type === 'tel' ? 'tel' : 'text';
+      if (question.type === 'number') input.inputMode = 'decimal';
+      if (question.type === 'email') input.autocomplete = 'email';
+      if (question.type === 'phone' || question.type === 'tel') input.autocomplete = 'tel';
+    }
+    input.value = typeof value === 'string' || typeof value === 'number' ? String(value) : '';
+    input.oninput = () => {
+      if (input.value === '') delete answers[question.key]; else answers[question.key] = input.value;
+      submitKey = crypto.randomUUID();
+    };
+    input.onchange = () => changed(question.key, input.value === '' ? undefined : input.value);
+    invalid(input);
+    return input;
+  }
+
+  function draw() {
+    if (disposed) return;
+    const focused = document.activeElement?.id;
+    const shown = visibleQuestions(schema, answers, options.earlier);
+    const children: Node[] = [];
+    for (const question of shown) {
+      const id = controls.get(question.key)?.id ?? fieldId(question.key);
+      const error = shownErrors[question.key];
+      const field = node(question.type === 'multi_select' ? 'fieldset' : 'div', 'cf-field');
+      const title = question.type === 'multi_select' ? node('legend', 'cf-label', question.label) : question.type === 'consent' ? null : node('label', 'cf-label', question.label);
+      if (title instanceof HTMLLabelElement) title.htmlFor = id;
+      if (title) field.append(title);
+      if (!question.required && question.type !== 'consent') field.append(node('p', 'cf-small', say('questions.optional')));
+      if (question.type === 'multi_select') field.append(node('p', 'cf-small', say('questions.choose_many')));
+      const input = control(question, id, error);
+      if (!input.id) input.id = id;
+      controls.set(question.key, input);
+      field.append(input);
+      if (error) { const line = node('p', 'cf-field-error', error); line.id = `${id}-error`; field.append(line); }
+      children.push(field);
+    }
+    fields.replaceChildren(...children);
+    if (focused) document.getElementById(focused)?.focus();
+  }
+
+  form.onsubmit = async event => {
+    event.preventDefault();
+    if (sending) return;
+    formError.replaceChildren();
+    const problems = answerProblems(schema, answers, options.earlier);
+    shownErrors = Object.fromEntries(Object.entries(problems).map(([key, problem]) => [key, say(problem.key, problem.values)]));
+    draw();
+    const first = Object.keys(problems)[0];
+    if (first) { controls.get(first)?.querySelector?.('input')?.focus(); controls.get(first)?.focus(); return; }
+    sending = true; send.disabled = true; status.textContent = say('questions.sending');
+    try {
+      const fields = answersPayload(schema, answers, options.earlier);
+      await session.submitAnswers(fields, submitKey, abort.signal);
+      if (!disposed) options.onSubmitted(fields);
+    } catch (cause) {
+      if (disposed) return;
+      sending = false; send.disabled = false; status.textContent = '';
+      if (cause instanceof CredflareError && cause.status === 422) {
+        submitKey = crypto.randomUUID();
+        const errors = cause.errors && typeof cause.errors === 'object' && !Array.isArray(cause.errors) ? cause.errors as Record<string, unknown> : {};
+        const fieldErrors = Object.entries(errors).filter(([path]) => path.startsWith('fields.')).map(([path, messages]) => [path.slice(7), Array.isArray(messages) ? String(messages[0]) : String(messages)] as [string, string]);
+        if (!cause.code && fieldErrors.length) { shownErrors = Object.fromEntries(fieldErrors); draw(); return; }
+        return render(...rejectionView(rejectionScreen(cause, {requester: info.requester}), () => { render(...page()); draw(); }, 'document'));
+      }
+      formError.replaceChildren(notice(cause instanceof CredflareError && cause.status !== 0 ? livenessErrorMessage(cause) : say('errors.send_answers_failed')));
+    }
+  };
+
+  const render = (...children: Node[]) => { if (!disposed) element.replaceChildren(...children); };
+  const page = () => [icon('document'), node('h2', 'cf-title', say('questions.title')), node('p', 'cf-body', say('questions.body', {verifier})), form];
+  render(...page());
+  draw();
+  return () => { disposed = true; abort.abort(); element.replaceChildren(); element.classList.remove('cf-root'); };
+}
+
+export interface ContactCodeOptions {
+  channel: CodeChannel;
+  onSubmitted: () => void;
+  onLeave?: () => void;
+}
+
+export function mountContactCode(element: HTMLElement, session: CredflareSession, info: SessionInfo, options: ContactCodeOptions): () => void {
+  installStyles();
+  element.classList.add('cf-root');
+  const {channel} = options;
+  const rules = requirements.contact_codes;
+  const verifier = verifierName(info);
+  const abort = new AbortController();
+  let disposed = false, destination = '', last: CodeRequest | null = null, resendAt: string | null = null, timer: ReturnType<typeof setInterval> | undefined;
+  const render = (...children: Node[]) => { if (disposed) return; if (timer) clearInterval(timer); timer = undefined; element.replaceChildren(...children); };
+  const header = () => [node('h2', 'cf-title', say(channel === 'email' ? 'email.title' : 'phone.title'))];
+
+  function enter(error?: string) {
+    const id = fieldId(channel);
+    const field = node('div', 'cf-field');
+    const label = node('label', 'cf-label', say(channel === 'email' ? 'email.label' : 'phone.label'));
+    label.htmlFor = id;
+    const input = node('input', 'cf-input');
+    input.id = id;
+    input.type = channel === 'email' ? 'email' : 'tel';
+    input.autocomplete = channel === 'email' ? 'email' : 'tel';
+    input.maxLength = channel === 'email' ? rules.email_max_length : rules.phone_max_length;
+    input.value = destination;
+    if (channel === 'email') input.placeholder = say('email.placeholder');
+    field.append(label, input);
+    if (channel === 'phone') field.append(node('p', 'cf-small', say('phone.hint')));
+    if (error) {
+      const line = node('p', 'cf-field-error', error);
+      line.id = `${id}-error`;
+      input.setAttribute('aria-invalid', 'true'); input.setAttribute('aria-describedby', line.id);
+      field.append(line);
+    }
+    const form = node('form');
+    form.noValidate = true;
+    form.style.cssText = `display:flex;flex-direction:column;gap:${tokens.spacing.gap}px`;
+    const submit = button(say(channel === 'email' ? 'email.send' : 'phone.send'));
+    submit.type = 'submit';
+    form.append(field, submit);
+    form.onsubmit = event => {
+      event.preventDefault();
+      destination = input.value.trim();
+      const problem = codeDestinationProblem(channel, destination);
+      if (problem) return enter(say(problem));
+      void send(channel === 'phone' ? normalizePhone(destination) : destination, 'enter');
+    };
+    render(...header(), node('p', 'cf-body', say(channel === 'email' ? 'email.body' : 'phone.body', {verifier})), form);
+    if (error) input.focus();
+  }
+
+  async function send(value: string, from: 'enter' | 'code') {
+    const status = node('p', 'cf-body', say('contact_code.sending'));
+    status.setAttribute('role', 'status');
+    render(...header(), status);
+    try {
+      last = await session.requestCode(channel, value, abort.signal);
+      resendAt = last.resend_available_at;
+      if (!disposed) code();
+    } catch (cause) {
+      if (!disposed) failed(cause, from, 'errors.send_code_failed');
+    }
+  }
+
+  function code(error?: string) {
+    if (!last) return enter();
+    const id = fieldId('code');
+    const field = node('div', 'cf-field');
+    const label = node('label', 'cf-label', say('contact_code.label'));
+    label.htmlFor = id;
+    const input = node('input', 'cf-input cf-code');
+    input.id = id; input.inputMode = 'numeric'; input.autocomplete = 'one-time-code'; input.maxLength = rules.code_length; input.pattern = `[0-9]{${rules.code_length}}`;
+    field.append(label, input);
+    const confirm = button(say('contact_code.confirm'));
+    confirm.type = 'submit';
+    confirm.disabled = true;
+    input.oninput = () => {
+      input.value = input.value.replace(/\D/g, '').slice(0, rules.code_length);
+      confirm.disabled = input.value.length !== rules.code_length;
+    };
+    const form = node('form');
+    form.noValidate = true;
+    form.style.cssText = `display:flex;flex-direction:column;gap:${tokens.spacing.gap}px`;
+    form.append(field, ...(error ? [notice(error)] : []), confirm);
+    form.onsubmit = async event => {
+      event.preventDefault();
+      if (input.value.length !== rules.code_length) return;
+      const value = input.value;
+      confirm.disabled = true; input.disabled = true; confirm.textContent = say('contact_code.confirming');
+      try {
+        await session.confirmCode(channel, value, abort.signal);
+        if (!disposed) options.onSubmitted();
+      } catch (cause) {
+        if (!disposed) failed(cause, 'code', 'errors.confirm_code_failed');
+      }
+    };
+    const countdown = node('p', 'cf-small', '');
+    countdown.setAttribute('aria-live', 'polite');
+    const resend = button(say('contact_code.resend'), true);
+    const remaining = last.sends_remaining;
+    resend.onclick = () => void send(channel === 'phone' ? normalizePhone(destination) : destination, 'code');
+    const change = node('button', 'cf-link', say(channel === 'email' ? 'email.change' : 'phone.change'));
+    change.type = 'button';
+    change.onclick = () => enter();
+    const tick = () => {
+      const seconds = secondsUntil(resendAt);
+      resend.disabled = seconds > 0;
+      countdown.textContent = seconds > 0 ? say('contact_code.resend_in', {seconds}) : '';
+      if (seconds === 0 && timer) { clearInterval(timer); timer = undefined; }
+    };
+    const extras: Node[] = remaining > 0 ? [resend, countdown, node('p', 'cf-small', say('contact_code.sends_remaining', {count: remaining}))] : [];
+    render(node('h2', 'cf-title', say('contact_code.title')), node('p', 'cf-body', say('contact_code.body', {destination: last.destination, minutes: rules.ttl_minutes})), form, ...extras, change);
+    if (remaining > 0) { tick(); if (secondsUntil(resendAt) > 0) timer = setInterval(tick, 1000); }
+    input.focus();
+  }
+
+  function failed(cause: unknown, from: 'enter' | 'code', fallback: CopyKey) {
+    if (!(cause instanceof CredflareError) || cause.status !== 422) {
+      const message = cause instanceof CredflareError && cause.status !== 0 ? livenessErrorMessage(cause) : say(fallback);
+      return from === 'code' && last ? code(message) : enter(message);
+    }
+    const screen = rejectionScreen(cause, {requester: info.requester});
+    const back = () => (from === 'code' && last ? code() : enter());
+    const actions: Record<string, (() => void) | undefined> = {
+      retry: back,
+      restart: back,
+      reenter_code: () => (last ? code() : enter()),
+      new_code: () => void send(channel === 'phone' ? normalizePhone(destination) : destination, from),
+      wait: () => {
+        const after = typeof cause.details.resend_available_at === 'string' ? cause.details.resend_available_at : null;
+        resendAt = after ?? resendAt ?? new Date(Date.now() + rules.resend_seconds * 1000).toISOString();
+        return last ? code() : enter();
+      },
+      leave: options.onLeave,
+    };
+    render(...rejectionView(screen, actions[screen.action]));
+  }
+
+  enter();
+  return () => { disposed = true; abort.abort(); if (timer) clearInterval(timer); element.replaceChildren(); element.classList.remove('cf-root'); };
 }
 
 export function mountReceipt(element: HTMLElement, info: SessionInfo, options: {received?: string[]; hostSteps?: boolean; onDone?: () => void} = {}): () => void {
@@ -399,32 +773,56 @@ export function mountReceipt(element: HTMLElement, info: SessionInfo, options: {
   return () => { element.replaceChildren(); element.classList.remove('cf-root'); };
 }
 
-export function mountRemainingSteps(element: HTMLElement, session: CredflareSession, options: {provider?: FaceSignalProvider<HTMLVideoElement>; received?: string[]; geolocation?: Geolocation; onDocuments?: (info: SessionInfo) => void; onDone?: () => void} = {}): () => void {
+export interface RemainingStepsOptions {
+  provider?: FaceSignalProvider<HTMLVideoElement>;
+  received?: string[];
+  geolocation?: Geolocation;
+  onDocuments?: (info: SessionInfo) => void;
+  onDone?: () => void;
+  onLeave?: () => void;
+}
+
+export function mountRemainingSteps(element: HTMLElement, session: CredflareSession, options: RemainingStepsOptions = {}): () => void {
   let dispose: (() => void) | undefined, disposed = false;
   const received = [...(options.received ?? [])];
   const status = node('p', 'cf-body', say('intro.checking'));
+  status.setAttribute('role', 'status');
+  const answered: Answers = {};
+  const submitted = (step: FlowStep) => () => {
+    const key = receiptKey(step);
+    if (key) received.push(say(key));
+    void advance();
+  };
   const advance = async () => {
     dispose?.(); dispose = undefined;
     installStyles();
     element.classList.add('cf-root');
     element.replaceChildren(status);
     let info: SessionInfo;
-    try { info = await session.get(); } catch (error) {
+    try { info = await session.get(); } catch {
       if (disposed) return;
       const retry = button(say('common.try_again'));
       retry.onclick = () => void advance();
-      element.replaceChildren(notice(livenessErrorMessage(error, say('errors.refresh_failed'))), retry);
+      element.replaceChildren(notice(say('errors.refresh_failed')), retry);
       return;
     }
     if (disposed) return;
     const step = nextStep(info);
     if (step === 'documents') return options.onDocuments?.(info);
+    if (step === 'questions') {
+      dispose = mountQuestions(element, session, info, {earlier: answered, onSubmitted: fields => { Object.assign(answered, fields); submitted(step)(); }});
+      return;
+    }
     if (step === 'facial_verification') {
-      dispose = mountLiveness(element, session, info, {provider: options.provider, onSubmitted: () => { received.push(say('receipt.selfie')); void advance(); }});
+      dispose = mountLiveness(element, session, info, {provider: options.provider, onSubmitted: submitted(step)});
       return;
     }
     if (step === 'location_verification') {
-      dispose = mountLocation(element, session, info, {geolocation: options.geolocation, onSubmitted: () => { received.push(say('receipt.location')); void advance(); }});
+      dispose = mountLocation(element, session, info, {geolocation: options.geolocation, onSubmitted: submitted(step)});
+      return;
+    }
+    if (step === 'email_verification' || step === 'phone_verification') {
+      dispose = mountContactCode(element, session, info, {channel: step === 'email_verification' ? 'email' : 'phone', onSubmitted: submitted(step), onLeave: options.onLeave ?? options.onDone});
       return;
     }
     dispose = mountReceipt(element, info, {received, hostSteps: step === 'host', onDone: options.onDone});
@@ -432,4 +830,3 @@ export function mountRemainingSteps(element: HTMLElement, session: CredflareSess
   void advance();
   return () => { disposed = true; dispose?.(); element.replaceChildren(); };
 }
-
