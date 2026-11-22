@@ -20,6 +20,7 @@ before(async () => {
       return res.end(await readFile(new URL(`./fixtures/rejections/${rejection}.json`, import.meta.url)));
     }
     const fixture = req.headers.authorization === 'Bearer wrong' ? 'unauthorized'
+      : req.url.endsWith('/handoff') ? 'handoff'
       : /\/(email|phone)-codes\/confirm$/.test(req.url) ? 'email-code-confirm'
       : req.url.endsWith('/email-codes') ? 'email-code-request'
       : req.url.endsWith('/phone-codes') ? 'phone-code-request'
@@ -275,13 +276,36 @@ test('requests and confirms contact codes with the real 202 and 201 bodies and n
   assert.equal(confirmed.id, 1);
 });
 
-test('keeps extra rejection fields such as the resend time on the error', async () => {
-  const {request} = await import('../dist/index.js');
-  const body = {...JSON.parse(await readFile(new URL('./fixtures/rejections/email.resend_too_soon.json', import.meta.url))), resend_available_at: '2026-11-21T23:59:07.000000Z'};
-  const fetcher = async () => new Response(JSON.stringify(body), {status: 422, headers: {'Content-Type': 'application/json'}});
-  const error = await request(fetcher, 'http://127.0.0.1/x', {method: 'POST'}).catch(cause => cause);
+test('a resend too soon rejection keeps its resend time on the error', async () => {
+  const {rejectionScreen} = await import('../dist/index.js');
+  const body = JSON.parse(await readFile(new URL('./fixtures/rejections/email.resend_too_soon.json', import.meta.url)));
+  const error = await session('reject:email.resend_too_soon').requestCode('email', 'jane@example.test').catch(cause => cause);
   assert.equal(error.code, 'email.resend_too_soon');
-  assert.deepEqual(error.details, {resend_available_at: '2026-11-21T23:59:07.000000Z'});
+  assert.deepEqual(error.details, {resend_available_at: body.resend_available_at});
+  assert.equal(rejectionScreen(error).action, 'wait');
+});
+
+test('the help line names the help email, else the help link, else the requester', async () => {
+  const {rejectionScreen, text} = await import('../dist/index.js');
+  const info = JSON.parse(await readFile(new URL('./fixtures/help-contact-session.json', import.meta.url))).data;
+  const error = new CredflareError('x', 422, [], 'phone.code_invalid');
+  const email = rejectionScreen(error, {requester: info.requester});
+  assert.equal(email.help, text('rejection.help_email', {verifier: info.requester.name, help_email: info.requester.help_email}));
+  assert.deepEqual(email.helpLink, {text: 'help@northwind.example', href: 'mailto:help@northwind.example'});
+  const url = rejectionScreen(error, {requester: {...info.requester, help_email: null}});
+  assert.equal(url.help, 'If you need help, visit https://northwind.example/support.');
+  assert.deepEqual(url.helpLink, {text: 'https://northwind.example/support', href: 'https://northwind.example/support'});
+  const plain = rejectionScreen(error, {requester: {...info.requester, help_email: null, help_url: null}});
+  assert.equal(plain.help, "If you need help, contact Ada's Workspace.");
+  assert.equal(plain.helpLink, null);
+  assert.equal(rejectionScreen(error, {requester: null}).help, `If you need help, contact ${text('common.verifier_fallback')}.`);
+});
+
+test('creates a phone handoff link with the real 201 body', async () => {
+  const link = await session().createHandoff();
+  assert.match(calls.at(-1).url, /\/sdk\/sessions\/00000000-0000-4000-8000-000000000001\/handoff$/);
+  assert.equal(calls.at(-1).headers.authorization, 'Bearer test-session-token');
+  assert.deepEqual(link, JSON.parse(await readFile(new URL('./fixtures/handoff.json', import.meta.url))).data);
 });
 
 test('a hidden question answer comes back as a field error from the submit route', async () => {

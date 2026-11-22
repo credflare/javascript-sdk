@@ -12,9 +12,10 @@ export interface RejectionScreen {
   actionLabel: string;
   requestedBy: string;
   help: string;
+  helpLink: {text: string; href: string} | null;
 }
 export interface RejectionContext {
-  requester?: {name?: string | null} | null;
+  requester?: {name?: string | null; help_email?: string | null; help_url?: string | null} | null;
   location?: LocationSettings | null;
   locale?: Locale;
 }
@@ -32,13 +33,21 @@ export function rejectionCopy(code: string | null | undefined): RejectionCopy | 
   return code && Object.hasOwn(codes, code) ? codes[code]! : null;
 }
 
+function helpLine(requester: RejectionContext['requester'], say: (key: string, values?: Record<string, string>) => string): Pick<RejectionScreen, 'help' | 'helpLink'> {
+  const email = requester?.help_email?.trim();
+  if (email) return {help: say(rejections.help_email, {help_email: email}), helpLink: {text: email, href: `mailto:${email}`}};
+  const url = requester?.help_url?.trim();
+  if (url && /^https?:\/\//i.test(url)) return {help: say(rejections.help_url, {help_url: url}), helpLink: {text: url, href: url}};
+  return {help: say(rejections.help), helpLink: null};
+}
+
 export function rejectionScreen(error: unknown, context: RejectionContext = {}): RejectionScreen {
   const locale = context.locale ?? 'en';
   const verifier = verifierName({requester: context.requester ?? null}, locale);
   const say = (key: string, values: Record<string, string> = {}) => text(key as CopyKey, {verifier, ...values}, locale);
   const code = error instanceof CredflareError ? error.code : null;
   const entry = rejectionCopy(code);
-  const base = {requestedBy: say(rejections.requested_by), help: say(rejections.help)};
+  const base = {requestedBy: say(rejections.requested_by), ...helpLine(context.requester, say)};
   if (!entry) {
     const message = error instanceof CredflareError && error.message ? error.message : say('errors.generic');
     return {code: null, title: null, message, action: 'retry', actionLabel: say(rejections.actions.retry.label), ...base};
