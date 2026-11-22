@@ -1,9 +1,9 @@
 // GENERATED FILE, DO NOT EDIT.
-// Source: credflare sdk-spec 1.0.0 (ef15c85fc748). Regenerate with scripts/generate.mjs.
+// Source: credflare sdk-spec 1.1.0 (b32704f91552). Regenerate with scripts/generate.mjs.
 /* eslint-disable */
 
-export const specVersion = "1.0.0" as const;
-export const specHash = "ef15c85fc748" as const;
+export const specVersion = "1.1.0" as const;
+export const specHash = "b32704f91552" as const;
 
 export const liveness = {
   "version": 1,
@@ -333,6 +333,9 @@ export const copy = {
     "receipt.document": "{document} received",
     "receipt.selfie": "Selfie received",
     "receipt.location": "Location received",
+    "receipt.email": "Email address received",
+    "receipt.phone": "Phone number received",
+    "receipt.answers": "Answers received",
     "receipt.host_steps": "The app will guide you through the remaining steps.",
     "receipt.done": "Done",
     "selfie.title": "Take a selfie",
@@ -414,6 +417,88 @@ export const copy = {
     "location.place.not_precise": "Your location is not precise enough to check this place. Move near a window or outside, then try again.",
     "location.place.rejected": "Your location does not match the place requested by {verifier}. Try again from the right place.",
     "location.place.retry": "Try again",
+    "email.title": "Confirm your email address",
+    "email.body": "{verifier} asks you to confirm an email address. We will send a short code to it.",
+    "email.label": "Email address",
+    "email.placeholder": "name@example.com",
+    "email.send": "Send code",
+    "email.invalid": "Enter a valid email address.",
+    "email.change": "Use a different email address",
+    "phone.title": "Confirm your phone number",
+    "phone.body": "{verifier} asks you to confirm a phone number. We will send a short code to it by text message.",
+    "phone.label": "Phone number",
+    "phone.hint": "Start with + and your country code, for example +44 7700 900123.",
+    "phone.send": "Send code",
+    "phone.invalid": "Enter the number in international format, starting with + and the country code.",
+    "phone.change": "Use a different phone number",
+    "contact_code.sending": "Sending a code…",
+    "contact_code.title": "Enter the code",
+    "contact_code.body": "We sent a code to {destination}. It expires in {minutes} minutes.",
+    "contact_code.label": "Code",
+    "contact_code.confirm": "Confirm",
+    "contact_code.confirming": "Checking the code…",
+    "contact_code.resend": "Send a new code",
+    "contact_code.resend_in": "You can ask for a new code in {seconds} seconds.",
+    "contact_code.sends_remaining": "You can ask for {count} more codes.",
+    "questions.title": "Answer a few questions",
+    "questions.body": "{verifier} asks for these details.",
+    "questions.optional": "Optional",
+    "questions.choose_one": "Choose an option",
+    "questions.choose_many": "Choose all that apply.",
+    "questions.choose_country": "Choose a country",
+    "questions.send": "Send answers",
+    "questions.sending": "Sending your answers…",
+    "questions.required": "Answer this question to continue.",
+    "questions.consent_required": "Give your consent to continue.",
+    "questions.invalid_number": "Enter a number.",
+    "questions.number_min": "Enter at least {min}.",
+    "questions.number_max": "Enter at most {max}.",
+    "questions.invalid_date": "Enter a real date.",
+    "questions.invalid_email": "Enter a valid email address.",
+    "questions.invalid_phone": "Enter a valid phone number.",
+    "questions.text_too_long": "Use at most 5000 characters.",
+    "rejection.requested_by": "Requested by {verifier}.",
+    "rejection.help": "If you need help, contact {verifier}.",
+    "rejection.action.retry": "Try again",
+    "rejection.action.restart": "Start again",
+    "rejection.action.reenter_code": "Enter the code again",
+    "rejection.action.new_code": "Send a new code",
+    "rejection.action.wait": "Send a new code",
+    "rejection.action.leave": "Close",
+    "rejection.location_accuracy.title": "Location not precise enough",
+    "rejection.location_stale.title": "Location out of date",
+    "rejection.location_mock.title": "Location is being changed",
+    "rejection.location_ip_country.title": "Connection in another country",
+    "rejection.location_reference.title": "Location does not match",
+    "rejection.liveness_expired.title": "Time ran out",
+    "rejection.liveness_restart.title": "Start this step again",
+    "rejection.liveness_restart.message": "This attempt can no longer be used. Start this step again.",
+    "rejection.gesture_mismatch.title": "Movements did not match",
+    "rejection.gesture_mismatch.message": "Some movements were missing or out of order. Start this step again and follow each prompt.",
+    "rejection.not_camera.title": "Camera needed",
+    "rejection.not_camera.message": "This step needs photos taken with the camera during the step. Start it again and use the camera.",
+    "rejection.video_missing.title": "Recording missing",
+    "rejection.video_missing.message": "The recording of this step did not arrive. Start the step again.",
+    "rejection.video_too_long.title": "Recording too long",
+    "rejection.video_too_long.message": "The recording was longer than allowed. Start the step again and follow the prompts without pausing.",
+    "rejection.video_unreadable.title": "Recording could not be read",
+    "rejection.video_unreadable.message": "We could not read the recording. Start the step again.",
+    "rejection.email_not_configured.title": "Email confirmation unavailable",
+    "rejection.email_not_configured.message": "Confirming an email address is not available for this request yet. Contact {verifier}.",
+    "rejection.phone_not_configured.title": "Phone confirmation unavailable",
+    "rejection.phone_not_configured.message": "Confirming a phone number is not available for this request yet. Contact {verifier}.",
+    "rejection.code_resend_too_soon.title": "Wait before asking again",
+    "rejection.code_resend_too_soon.message": "A code was sent less than a minute ago. Wait a moment, then ask for a new code.",
+    "rejection.code_send_limit.title": "Too many codes sent",
+    "rejection.code_send_limit.message": "Too many codes were sent for this request. Try again in 24 hours.",
+    "rejection.code_missing.title": "No code to check",
+    "rejection.code_missing.message": "Ask for a code first, then enter it here.",
+    "rejection.code_expired.title": "Code expired",
+    "rejection.code_expired.message": "This code has expired. Ask for a new one.",
+    "rejection.code_invalid.title": "Code not correct",
+    "rejection.code_invalid.message": "This code is not correct. Check it and enter it again.",
+    "rejection.code_too_many_attempts.title": "Too many wrong codes",
+    "rejection.code_too_many_attempts.message": "Too many wrong codes were entered. Ask for a new code.",
     "errors.generic": "Something went wrong. Try again.",
     "errors.network": "Could not connect. Check your connection and try again.",
     "errors.session_expired": "Your session has expired. Close this screen and start again.",
@@ -436,7 +521,10 @@ export const copy = {
     "errors.selfie_failed": "Could not take your selfie. Try again.",
     "errors.send_selfie_failed": "Could not send your selfie. Check your connection and try again.",
     "errors.challenge_failed": "We could not start this step. Check your connection and try again.",
-    "errors.send_location_failed": "Could not send your location. Check your connection and try again."
+    "errors.send_location_failed": "Could not send your location. Check your connection and try again.",
+    "errors.send_code_failed": "Could not send the code. Check your connection and try again.",
+    "errors.confirm_code_failed": "Could not check the code. Check your connection and try again.",
+    "errors.send_answers_failed": "Could not send your answers. Check your connection and try again."
   }
 } as const;
 
@@ -452,7 +540,12 @@ export const copyPlaceholders = {
   "size": "Maximum file size, formatted as megabytes, for example 10 MB.",
   "meters": "Accuracy radius in whole meters.",
   "place": "Label of a reference place, for example Head office. Never coordinates.",
-  "places": "Labels of several reference places, joined with a comma and a space."
+  "places": "Labels of several reference places, joined with a comma and a space.",
+  "destination": "Masked email address or phone number returned when a code is sent, for example J*******@example.com.",
+  "minutes": "Whole minutes, for example 10.",
+  "seconds": "Whole seconds, for example 45.",
+  "min": "Smallest number a question accepts.",
+  "max": "Largest number a question accepts."
 } as const;
 
 export const errorCodes = {
@@ -469,7 +562,300 @@ export const errorCodes = {
   "liveness.not_camera": "Evidence was not uploaded with capture_source=camera for this challenge",
   "liveness.video_missing": "record_video is on and no video for this challenge was sent",
   "liveness.video_too_long": "The video is longer than max_video_seconds plus one second",
-  "liveness.video_unreadable": "The server cannot read the video duration"
+  "liveness.video_unreadable": "The server cannot read the video duration",
+  "email.not_configured": "No email sender serves this environment, for example the log driver on a live case",
+  "email.resend_too_soon": "A code was sent to this email address less than 60 seconds ago",
+  "email.send_limit": "Five codes were sent for this case within 24 hours",
+  "email.code_missing": "No unused code was requested for this case",
+  "email.code_expired": "The code is older than 10 minutes",
+  "email.code_invalid": "The code does not match",
+  "email.too_many_attempts": "Five wrong codes were entered; a new code is needed",
+  "phone.not_configured": "No SMS sender serves this environment, for example the log driver on a live case",
+  "phone.resend_too_soon": "A code was sent to this phone number less than 60 seconds ago",
+  "phone.send_limit": "Five codes were sent for this case within 24 hours",
+  "phone.code_missing": "No unused code was requested for this case",
+  "phone.code_expired": "The code is older than 10 minutes",
+  "phone.code_invalid": "The code does not match",
+  "phone.too_many_attempts": "Five wrong codes were entered; a new code is needed"
+} as const;
+
+export const rejections = {
+  "version": 1,
+  "requested_by": "rejection.requested_by",
+  "help": "rejection.help",
+  "actions": {
+    "retry": {
+      "label": "rejection.action.retry",
+      "meaning": "Stay on the step and capture again with the same settings"
+    },
+    "restart": {
+      "label": "rejection.action.restart",
+      "meaning": "Start the step from the beginning, which asks the server for a new challenge"
+    },
+    "reenter_code": {
+      "label": "rejection.action.reenter_code",
+      "meaning": "Clear the code field and let the applicant type the code again"
+    },
+    "new_code": {
+      "label": "rejection.action.new_code",
+      "meaning": "Request a new code for the same email address or phone number"
+    },
+    "wait": {
+      "label": "rejection.action.wait",
+      "meaning": "Keep the code screen and enable sending a new code at resend_available_at from the last code request"
+    },
+    "leave": {
+      "label": "rejection.action.leave",
+      "meaning": "Nothing can be done in the app now; show the help line and let the applicant leave"
+    }
+  },
+  "codes": {
+    "location.accuracy": {
+      "title": "rejection.location_accuracy.title",
+      "message": "location.low_accuracy",
+      "action": "retry",
+      "place_message_within": "location.place.not_precise",
+      "place_message_outside": "location.place.not_precise"
+    },
+    "location.stale": {
+      "title": "rejection.location_stale.title",
+      "message": "location.stale",
+      "action": "retry"
+    },
+    "location.mock": {
+      "title": "rejection.location_mock.title",
+      "message": "location.mock_detected",
+      "action": "retry"
+    },
+    "location.ip_country": {
+      "title": "rejection.location_ip_country.title",
+      "message": "location.ip_country_mismatch",
+      "action": "retry"
+    },
+    "location.reference_not_matched": {
+      "title": "rejection.location_reference.title",
+      "message": "location.place.rejected",
+      "action": "retry",
+      "place_message_within": "location.place.not_matched_within",
+      "place_message_outside": "location.place.not_matched_outside"
+    },
+    "liveness.challenge_invalid": {
+      "title": "rejection.liveness_restart.title",
+      "message": "rejection.liveness_restart.message",
+      "action": "restart"
+    },
+    "liveness.challenge_expired": {
+      "title": "rejection.liveness_expired.title",
+      "message": "liveness.expired",
+      "action": "restart"
+    },
+    "liveness.challenge_used": {
+      "title": "rejection.liveness_restart.title",
+      "message": "rejection.liveness_restart.message",
+      "action": "restart"
+    },
+    "liveness.gesture_mismatch": {
+      "title": "rejection.gesture_mismatch.title",
+      "message": "rejection.gesture_mismatch.message",
+      "action": "restart"
+    },
+    "liveness.frame_out_of_window": {
+      "title": "rejection.liveness_expired.title",
+      "message": "liveness.expired",
+      "action": "restart"
+    },
+    "liveness.not_camera": {
+      "title": "rejection.not_camera.title",
+      "message": "rejection.not_camera.message",
+      "action": "restart"
+    },
+    "liveness.video_missing": {
+      "title": "rejection.video_missing.title",
+      "message": "rejection.video_missing.message",
+      "action": "restart"
+    },
+    "liveness.video_too_long": {
+      "title": "rejection.video_too_long.title",
+      "message": "rejection.video_too_long.message",
+      "action": "restart"
+    },
+    "liveness.video_unreadable": {
+      "title": "rejection.video_unreadable.title",
+      "message": "rejection.video_unreadable.message",
+      "action": "restart"
+    },
+    "email.not_configured": {
+      "title": "rejection.email_not_configured.title",
+      "message": "rejection.email_not_configured.message",
+      "action": "leave"
+    },
+    "email.resend_too_soon": {
+      "title": "rejection.code_resend_too_soon.title",
+      "message": "rejection.code_resend_too_soon.message",
+      "action": "wait"
+    },
+    "email.send_limit": {
+      "title": "rejection.code_send_limit.title",
+      "message": "rejection.code_send_limit.message",
+      "action": "leave"
+    },
+    "email.code_missing": {
+      "title": "rejection.code_missing.title",
+      "message": "rejection.code_missing.message",
+      "action": "new_code"
+    },
+    "email.code_expired": {
+      "title": "rejection.code_expired.title",
+      "message": "rejection.code_expired.message",
+      "action": "new_code"
+    },
+    "email.code_invalid": {
+      "title": "rejection.code_invalid.title",
+      "message": "rejection.code_invalid.message",
+      "action": "reenter_code"
+    },
+    "email.too_many_attempts": {
+      "title": "rejection.code_too_many_attempts.title",
+      "message": "rejection.code_too_many_attempts.message",
+      "action": "new_code"
+    },
+    "phone.not_configured": {
+      "title": "rejection.phone_not_configured.title",
+      "message": "rejection.phone_not_configured.message",
+      "action": "leave"
+    },
+    "phone.resend_too_soon": {
+      "title": "rejection.code_resend_too_soon.title",
+      "message": "rejection.code_resend_too_soon.message",
+      "action": "wait"
+    },
+    "phone.send_limit": {
+      "title": "rejection.code_send_limit.title",
+      "message": "rejection.code_send_limit.message",
+      "action": "leave"
+    },
+    "phone.code_missing": {
+      "title": "rejection.code_missing.title",
+      "message": "rejection.code_missing.message",
+      "action": "new_code"
+    },
+    "phone.code_expired": {
+      "title": "rejection.code_expired.title",
+      "message": "rejection.code_expired.message",
+      "action": "new_code"
+    },
+    "phone.code_invalid": {
+      "title": "rejection.code_invalid.title",
+      "message": "rejection.code_invalid.message",
+      "action": "reenter_code"
+    },
+    "phone.too_many_attempts": {
+      "title": "rejection.code_too_many_attempts.title",
+      "message": "rejection.code_too_many_attempts.message",
+      "action": "new_code"
+    }
+  }
+} as const;
+
+export const requirements = {
+  "version": 1,
+  "verification_types": [
+    "facial_verification",
+    "location_verification",
+    "email_verification",
+    "phone_verification"
+  ],
+  "contact_codes": {
+    "channels": {
+      "email": "email_verification",
+      "phone": "phone_verification"
+    },
+    "code_length": 6,
+    "ttl_minutes": 10,
+    "max_attempts": 5,
+    "resend_seconds": 60,
+    "max_sends": 5,
+    "send_window_hours": 24,
+    "email_max_length": 254,
+    "phone_max_length": 32,
+    "phone_strip": "[\\s().-]",
+    "phone_pattern": "^\\+[1-9][0-9]{6,14}$"
+  },
+  "questions": {
+    "types": [
+      "text",
+      "textarea",
+      "email",
+      "number",
+      "date",
+      "select",
+      "tel",
+      "founders",
+      "phone",
+      "single_select",
+      "multi_select",
+      "country",
+      "consent"
+    ],
+    "choice_types": [
+      "select",
+      "single_select",
+      "multi_select"
+    ],
+    "key_pattern": "^[A-Za-z][A-Za-z0-9_-]{0,99}$",
+    "max_options": 100,
+    "max_option_length": 200,
+    "text_max_length": 5000,
+    "number_pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+    "date_pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+    "phone_pattern": "^\\+?[0-9][0-9 ().-]{4,30}$",
+    "country_pattern": "^[A-Z]{2}$",
+    "email_max_length": 254
+  },
+  "show_if": {
+    "match": [
+      "all",
+      "any"
+    ],
+    "default_match": "all",
+    "max_conditions": 10,
+    "path_prefix": "form.",
+    "operators": [
+      "equals",
+      "not_equals",
+      "gt",
+      "gte",
+      "lt",
+      "lte",
+      "contains",
+      "not_contains",
+      "in",
+      "not_in",
+      "is_empty",
+      "is_not_empty",
+      "regex",
+      "fuzzy_match"
+    ],
+    "max_list_values": 100,
+    "max_pattern_length": 200,
+    "fuzzy_default_min_score": 80
+  },
+  "refresh": {
+    "after": [
+      "submit",
+      "email_code_confirm",
+      "phone_code_confirm"
+    ],
+    "open_statuses": [
+      "pending",
+      "in_progress"
+    ],
+    "outstanding": [
+      "profile.document_requirements",
+      "profile.verification_requirements",
+      "profile.form_schema"
+    ]
+  }
 } as const;
 
 export const tokens = {
@@ -1002,6 +1388,9 @@ export type IconName = keyof typeof icons;
 export type Locale = keyof typeof copy;
 export type CopyKey = keyof (typeof copy)["en"];
 export type ErrorCode = keyof typeof errorCodes;
+export type RejectionAction = keyof (typeof rejections)["actions"];
+export type QuestionType = (typeof requirements)["questions"]["types"][number];
+export type ConditionOperator = (typeof requirements)["show_if"]["operators"][number];
 export type GestureName = keyof (typeof liveness)["gestures"];
 export type LivenessProvider = keyof (typeof liveness)["thresholds"];
 export type ThresholdKey = keyof (typeof liveness)["thresholds"]["default"];
