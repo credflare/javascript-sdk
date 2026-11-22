@@ -15,7 +15,7 @@ const provider=createMediaPipeProvider({wasmBaseUrl:'/vendor/mediapipe/wasm',mod
 let session,info,dispose,received=[];
 function remaining(){
  dispose?.();capture.replaceChildren();status.textContent='';document.querySelector('#title').hidden=true;document.querySelector('#intro').hidden=true;
- dispose=mountRemainingSteps(capture,session,{provider,received,onDocuments:next=>{info=next;showDocuments();},onDone:()=>{status.textContent=text('receipt.body',{verifier:verifierName(info)});}});
+ dispose=mountRemainingSteps(capture,session,{provider,received,handoff:true,onDocuments:next=>{info=next;showDocuments();},onDone:()=>{status.textContent=text('receipt.body',{verifier:verifierName(info)});}});
 }
 async function refresh(){
  info=await session.get();document.querySelector('#verifier').textContent=info.requester?.name??'';

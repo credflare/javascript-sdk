@@ -28,6 +28,10 @@ export interface CodeRequest {
   resend_available_at: string;
   sends_remaining: number;
 }
+export interface Handoff {
+  handoff_url: string;
+  expires_at: string;
+}
 export interface CodeConfirmation {
   id: number;
   verified: boolean;
@@ -42,7 +46,7 @@ export interface SessionInfo {
   status: string;
   environment: 'sandbox' | 'live';
   custom_message: string | null;
-  requester: { name: string; logo_url: string | null } | null;
+  requester: { name: string; logo_url: string | null; help_email?: string | null; help_url?: string | null } | null;
   brand: Record<string, unknown> | null;
   upload_limits: { max_file_size_bytes: number; allowed_file_types: string[]; max_uploads_per_requirement: number };
   profile: { name: string | null; form_schema: FormField[] | null; document_requirements: DocumentRequirement[]; verification_requirements: VerificationRequirement[] } | null;
@@ -198,6 +202,9 @@ export class CredflareSession {
   confirmCode(channel: CodeChannel, code: string, signal?: AbortSignal): Promise<CodeConfirmation> {
     return this.call('POST', `/${channel}-codes/confirm`, JSON.stringify({ code }), undefined, signal, false);
   }
+  createHandoff(signal?: AbortSignal): Promise<Handoff> {
+    return this.call('POST', '/handoff', undefined, undefined, signal, false);
+  }
   cancel(signal?: AbortSignal): Promise<null> { return this.call('DELETE', '', undefined, undefined, signal); }
 }
 
@@ -223,6 +230,7 @@ export {answerProblems, answersPayload, canAskQuestions, isEmptyAnswer, question
 export type {Answers, Question, QuestionProblem} from './questions.js';
 export {rejectionCopy, rejectionScreen} from './rejections.js';
 export type {RejectionContext, RejectionScreen} from './rejections.js';
+export {qrMatrix, qrSvg} from './qr.js';
 export {codeDestinationProblem, normalizePhone, secondsUntil} from './codes.js';
 export {challengeRejected, facialMetadata, livenessErrorMessage, sendLivenessEvidence} from './liveness.js';
 export type {GestureEvidence, LivenessEvidence, PendingUpload} from './liveness.js';

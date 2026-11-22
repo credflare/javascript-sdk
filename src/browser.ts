@@ -7,6 +7,8 @@ import type {RejectionScreen} from './rejections.js';
 import {answerProblems, answersPayload, visibleQuestions} from './questions.js';
 import type {Answers, Question} from './questions.js';
 import {codeDestinationProblem, normalizePhone, secondsUntil} from './codes.js';
+import {qrSvg} from './qr.js';
+import {refreshOutcome} from './workflow.js';
 import type {CodeChannel, CodeRequest} from './index.js';
 import {text, verifierName} from './copy.js';
 import type {CopyValues} from './copy.js';
@@ -33,6 +35,7 @@ export function installStyles(doc: Document = document): void {
 .cf-root{${cssVars(tokens.color.light)};color:var(--cf-ink);background:var(--cf-surface);font-family:${tokens.font.family},system-ui,sans-serif;text-align:${tokens.text_align};display:flex;flex-direction:column;align-items:center;gap:${spacing.gap}px;max-width:${size.max_content_width}px;margin:0 auto;padding:${spacing.gutter}px}
 @media (prefers-color-scheme:dark){.cf-root{${cssVars(tokens.color.dark)}}}
 .cf-root>*{width:100%;box-sizing:border-box}
+.cf-root .cf-root{padding:0}
 .cf-title{font-size:${type.title.size}px;line-height:${type.title.line_height}px;font-weight:${type.title.weight};margin:0}
 .cf-body{font-size:${type.body.size}px;line-height:${type.body.line_height}px;color:var(--cf-muted);margin:0}
 .cf-small{font-size:${type.small.size}px;line-height:${type.small.line_height}px;color:var(--cf-muted);margin:0}
@@ -61,6 +64,9 @@ textarea.cf-input{min-height:${size.button_height * 2}px;padding:${spacing.sm}px
 .cf-choice{display:flex;align-items:center;justify-content:center;gap:${spacing.sm}px;min-height:${size.button_height}px;border:1px solid var(--cf-border);border-radius:${radius.md}px;padding:0 ${spacing.md}px;cursor:pointer}
 .cf-choice input{width:20px;height:20px;accent-color:var(--cf-primary)}
 .cf-field-error{font-size:${type.small.size}px;line-height:${type.small.line_height}px;color:var(--cf-error);margin:0}
+.cf-root a{color:var(--cf-primary)}
+.cf-qr{display:flex;justify-content:center}
+.cf-qr svg{width:min(100%,240px);height:auto;border-radius:${radius.md}px}
 .cf-link{font:inherit;font-size:${type.small.size}px;background:none;border:0;color:var(--cf-primary);text-decoration:underline;cursor:pointer;padding:${spacing.xs}px}
 .cf-hint{font-size:${type.subtitle.size}px;line-height:${type.subtitle.line_height}px;font-weight:${type.subtitle.weight};margin:0;min-height:${type.subtitle.line_height * 2}px}
 [hidden]{display:none!important}`;
@@ -92,13 +98,24 @@ function notice(message: string): HTMLElement {
 }
 const say = (key: CopyKey, values?: CopyValues) => text(key, values);
 
+function helpParagraph(screen: RejectionScreen): HTMLElement {
+  const line = node('p', 'cf-small');
+  const at = screen.helpLink ? screen.helpLink.text ? screen.help.indexOf(screen.helpLink.text) : -1 : -1;
+  if (!screen.helpLink || at < 0) { line.textContent = screen.help; return line; }
+  const link = node('a', '', screen.helpLink.text);
+  link.href = screen.helpLink.href;
+  if (!screen.helpLink.href.startsWith('mailto:')) { link.target = '_blank'; link.rel = 'noopener noreferrer'; }
+  line.append(screen.help.slice(0, at), link, screen.help.slice(at + screen.helpLink.text.length));
+  return line;
+}
+
 export function rejectionView(screen: RejectionScreen, onAction?: () => void, iconName: IconName = 'error'): Node[] {
   const box = node('div', 'cf-notice');
   box.setAttribute('role', 'alert');
   box.append(icon('error'), node('p', 'cf-body', screen.message));
   const children: Node[] = [icon(iconName)];
   if (screen.title) children.push(node('h2', 'cf-title', screen.title));
-  children.push(box, node('p', 'cf-small', screen.requestedBy), node('p', 'cf-small', screen.help));
+  children.push(box, node('p', 'cf-small', screen.requestedBy), helpParagraph(screen));
   if (onAction) {
     const action = button(screen.actionLabel);
     action.onclick = onAction;
@@ -773,6 +790,63 @@ export function mountReceipt(element: HTMLElement, info: SessionInfo, options: {
   return () => { element.replaceChildren(); element.classList.remove('cf-root'); };
 }
 
+export interface HandoffOptions {
+  onBack: () => void;
+  onFinished: () => void;
+  pollMs?: number;
+}
+
+export function mountHandoff(element: HTMLElement, session: CredflareSession, options: HandoffOptions): () => void {
+  installStyles();
+  element.classList.add('cf-root');
+  const abort = new AbortController();
+  let disposed = false, timer: ReturnType<typeof setInterval> | undefined, poll: ReturnType<typeof setInterval> | undefined;
+  const stop = () => { if (timer) clearInterval(timer); timer = undefined; };
+  const render = (...children: Node[]) => { if (!disposed) element.replaceChildren(...children); };
+  const back = () => { const control = button(say('common.back'), true); control.onclick = options.onBack; return control; };
+  const title = () => node('h2', 'cf-title', say('handoff.title'));
+
+  async function create() {
+    stop();
+    const status = node('p', 'cf-body', say('common.loading'));
+    status.setAttribute('role', 'status');
+    render(title(), status);
+    try {
+      const link = await session.createHandoff(abort.signal);
+      if (!disposed) show(link.handoff_url, link.expires_at);
+    } catch (cause) {
+      if (disposed) return;
+      const retry = button(say('common.try_again'));
+      retry.onclick = () => void create();
+      render(title(), notice(cause instanceof CredflareError && cause.status !== 0 ? livenessErrorMessage(cause) : say('errors.network')), retry, back());
+    }
+  }
+
+  function show(url: string, expiresAt: string) {
+    const code = node('div', 'cf-qr');
+    code.innerHTML = qrSvg(url);
+    code.querySelector('svg')?.setAttribute('aria-label', say('handoff.title'));
+    const body = node('p', 'cf-body', '');
+    const update = () => {
+      const seconds = secondsUntil(expiresAt);
+      if (seconds > 0) { body.textContent = say('handoff.body', {minutes: Math.max(1, Math.ceil(seconds / 60))}); return; }
+      stop();
+      const again = button(say('handoff.new_code'));
+      again.onclick = () => void create();
+      render(title(), node('p', 'cf-body', say('handoff.expired')), again, back());
+    };
+    render(title(), code, body, back());
+    update();
+    if (secondsUntil(expiresAt) > 0) timer = setInterval(update, 1000);
+  }
+
+  poll = setInterval(() => {
+    session.get(abort.signal).then(info => { if (!disposed && refreshOutcome(info) === 'receipt') options.onFinished(); }, () => undefined);
+  }, options.pollMs ?? 5000);
+  void create();
+  return () => { disposed = true; abort.abort(); stop(); if (poll) clearInterval(poll); element.replaceChildren(); element.classList.remove('cf-root'); };
+}
+
 export interface RemainingStepsOptions {
   provider?: FaceSignalProvider<HTMLVideoElement>;
   received?: string[];
@@ -780,6 +854,7 @@ export interface RemainingStepsOptions {
   onDocuments?: (info: SessionInfo) => void;
   onDone?: () => void;
   onLeave?: () => void;
+  handoff?: boolean;
 }
 
 export function mountRemainingSteps(element: HTMLElement, session: CredflareSession, options: RemainingStepsOptions = {}): () => void {
@@ -809,23 +884,36 @@ export function mountRemainingSteps(element: HTMLElement, session: CredflareSess
     if (disposed) return;
     const step = nextStep(info);
     if (step === 'documents') return options.onDocuments?.(info);
+    if (options.handoff && step !== 'done' && step !== 'host') {
+      const inner = node('div');
+      const offer = button(say('handoff.action'), true);
+      offer.onclick = () => {
+        dispose?.();
+        dispose = mountHandoff(element, session, {onBack: () => void advance(), onFinished: () => void advance()});
+      };
+      element.replaceChildren(inner, offer);
+      return mountStep(inner, step, info);
+    }
+    return mountStep(element, step, info);
+  };
+  const mountStep = (target: HTMLElement, step: FlowStep, info: SessionInfo) => {
     if (step === 'questions') {
-      dispose = mountQuestions(element, session, info, {earlier: answered, onSubmitted: fields => { Object.assign(answered, fields); submitted(step)(); }});
+      dispose = mountQuestions(target, session, info, {earlier: answered, onSubmitted: fields => { Object.assign(answered, fields); submitted(step)(); }});
       return;
     }
     if (step === 'facial_verification') {
-      dispose = mountLiveness(element, session, info, {provider: options.provider, onSubmitted: submitted(step)});
+      dispose = mountLiveness(target, session, info, {provider: options.provider, onSubmitted: submitted(step)});
       return;
     }
     if (step === 'location_verification') {
-      dispose = mountLocation(element, session, info, {geolocation: options.geolocation, onSubmitted: submitted(step)});
+      dispose = mountLocation(target, session, info, {geolocation: options.geolocation, onSubmitted: submitted(step)});
       return;
     }
     if (step === 'email_verification' || step === 'phone_verification') {
-      dispose = mountContactCode(element, session, info, {channel: step === 'email_verification' ? 'email' : 'phone', onSubmitted: submitted(step), onLeave: options.onLeave ?? options.onDone});
+      dispose = mountContactCode(target, session, info, {channel: step === 'email_verification' ? 'email' : 'phone', onSubmitted: submitted(step), onLeave: options.onLeave ?? options.onDone});
       return;
     }
-    dispose = mountReceipt(element, info, {received, hostSteps: step === 'host', onDone: options.onDone});
+    dispose = mountReceipt(target, info, {received, hostSteps: step === 'host', onDone: options.onDone});
   };
   void advance();
   return () => { disposed = true; dispose?.(); element.replaceChildren(); };
