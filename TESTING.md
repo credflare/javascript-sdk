@@ -14,6 +14,9 @@ node tool/browser-camera.mjs
 | Gesture engine | Every trace in `test/fixtures/liveness-traces`, plus challenge sequencing, timeout and expiry |
 | Settings | Facial and location settings, defaults and reference place labels |
 | Location | Accuracy, age and mock checks, retry attempts, reference place copy |
+| Questions | Every server computed `show_if` case in `fixtures/show-if-cases.json` (62), conditional questions of the questionnaire session, validation copy for each question type, hidden answers left out of the payload |
+| Contact codes | Code request and confirmation against the real 202 and 201 bodies, every email and phone rejection mapped to its spec screen, extra rejection fields kept |
+| Refresh rule | The session before and after a form submission that added a phone requirement, receipt when nothing is outstanding |
 | MediaPipe signals | A real Face Landmarker result for a face turned to its own right and looking down (and its mirror) gives the contract signs for yaw and pitch |
 
 `tool/browser-camera.mjs` starts headless Chrome with a synthetic camera, emulates geolocation and runs the remaining steps flow: liveness intro and consent, mirrored preview, challenge, gesture frames, video recording, selfie, uploads, facial submission, location consent, a low accuracy retry, a server rejection with retry, location submission and the receipt. The synthetic camera shows no face, so the page replays spec traces through the provider interface; the camera stream, recording and uploads are real. Set `SCREENSHOT_DIR` to save each screen.

@@ -79,6 +79,16 @@ Face signals come from a swappable provider (`FaceSignalProvider`). The browser 
 
 Location shows a consent screen (naming a reference place by its label when the profile has one), requests a high accuracy fix with `navigator.geolocation`, retries up to the spec attempts until the fix meets `max_accuracy_m` and `max_age_s`, then sends it with `provider: "browser"` and `is_mock: null`. Server rejections are recognised by their `code` (exposed on `CredflareError.code`) and shown with the matching copy and a retry; a place requirement rejection names the place. No geocoding or IP lookup is called.
 
+## Questions, email and phone codes
+
+`mountRemainingSteps` also asks the profile's questions and confirms email addresses and phone numbers, so the remaining order is questions, documents, then the verification requirements in profile order. Questions follow `show_if`: a hidden question is not shown, not validated and not sent (`visibleQuestions`, `answerProblems`, `answersPayload`, `isShown`). Email and phone steps ask for the address or number, send a code (`requestCode`), take the six digit code (`confirmCode`) and offer a new code when `resend_available_at` passes.
+
+After every submit and code confirmation the SDK fetches the session again. It continues while the session is open and something is still outstanding (a workflow can add a requirement, such as a phone check, after an answer) and shows the receipt otherwise. When the fetch fails it shows `errors.refresh_failed` with a retry, never the receipt.
+
+A `422` with a known `code` shows the spec rejection screen (`rejectionScreen`): title, message, who asked for the evidence, the help line and one action (`retry`, `restart`, `reenter_code`, `new_code`, `wait` or `leave`). Any other `422` shows the server message with a retry.
+
+When the browser reports more than one camera, the liveness screen shows a camera picker; changing the camera starts the step again with a new challenge.
+
 Browser permissions: camera (no microphone) and location. Serve the page over HTTPS.
 
 ## Shared spec
