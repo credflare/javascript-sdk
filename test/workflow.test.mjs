@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {requiresSelfie, requiresFacial, requiresLocation, needsHostSteps, selfieFileTypes, nextStep, documentsNextKey} from '../dist/index.js';
+import {requiresSelfie, requiresFacial, requiresLocation, needsHostSteps, selfieFileTypes, nextStep, documentsNextKey, hasOutstanding, refreshOutcome, receiptKey} from '../dist/index.js';
 const load = async name => JSON.parse(await readFile(new URL(`./fixtures/${name}.json`, import.meta.url))).data;
 
 test('the actual configured requirements select facial collection and clear after submission', async () => {
@@ -31,7 +31,9 @@ test('liveness and location run inside the SDK in profile order', async () => {
   const afterFacial = {...info, profile: {...info.profile, verification_requirements: info.profile.verification_requirements.slice(1)}};
   assert.equal(nextStep(afterFacial), 'location_verification');
   const withForm = {...info, profile: {...info.profile, verification_requirements: [], form_schema: [{key: 'full_name', label: 'Full name', type: 'text', required: true}]}};
-  assert.equal(nextStep(withForm), 'host');
+  assert.equal(nextStep(withForm), 'questions');
+  const withFounders = {...withForm, profile: {...withForm.profile, form_schema: [{key: 'founders', label: 'Founders', type: 'founders', required: true}]}};
+  assert.equal(nextStep(withFounders), 'host');
 });
 
 test('the documents list names the in app steps that follow, in profile order', async () => {
@@ -44,4 +46,22 @@ test('the documents list names the in app steps that follow, in profile order', 
   assert.equal(documentsNextKey(withSteps([])), null);
   assert.equal(documentsNextKey({...withSteps([]), profile: {...withSteps([]).profile, form_schema: [{name: 'phone'}]}}), 'documents.host_steps_next');
   assert.equal(documentsNextKey({...withSteps(['facial_verification']), profile: {...withSteps(['facial_verification']).profile, form_schema: [{name: 'phone'}]}}), 'documents.selfie_next');
+});
+
+test('the refresh rule continues with a requirement a workflow added and shows the receipt when nothing is left', async () => {
+  const before = await load('questionnaire-session');
+  const after = await load('requirement-added-session');
+  assert.equal(nextStep(before), 'questions');
+  assert.equal(refreshOutcome(before), 'continue');
+  assert.equal(hasOutstanding(after), true);
+  assert.equal(after.profile.form_schema, null);
+  assert.equal(nextStep(after), 'phone_verification');
+  assert.equal(receiptKey('questions'), 'receipt.answers');
+  assert.equal(receiptKey('phone_verification'), 'receipt.phone');
+  const answered = {...before, profile: {...before.profile, form_schema: null}};
+  assert.equal(nextStep(answered), 'email_verification');
+  const finished = {...after, profile: {...after.profile, verification_requirements: []}};
+  assert.equal(refreshOutcome(finished), 'receipt');
+  assert.equal(nextStep(finished), 'done');
+  assert.equal(refreshOutcome({...after, status: 'completed'}), 'receipt');
 });

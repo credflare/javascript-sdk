@@ -1,4 +1,6 @@
 import type {ErrorCode} from './spec.generated.js';
+import type {requirements} from './spec.generated.js';
+import type {Question} from './questions.js';
 import type { GestureName } from './spec.generated.js';
 import type { FaceProviderName } from './engine.js';
 import type { VerificationRequirement } from './settings.js';
@@ -17,12 +19,22 @@ export interface DocumentRequirement {
   min_required?: number | null;
   remaining_required?: number | null;
 }
-export interface FormField {
-  key: string;
-  label: string;
-  type: 'text' | 'email' | 'number' | 'date' | 'select' | 'textarea' | 'tel' | 'founders';
-  required: boolean;
-  options?: unknown[] | null;
+export type FormField = Question;
+export type CodeChannel = keyof typeof requirements.contact_codes.channels;
+export interface CodeRequest {
+  channel: CodeChannel;
+  destination: string;
+  expires_at: string;
+  resend_available_at: string;
+  sends_remaining: number;
+}
+export interface CodeConfirmation {
+  id: number;
+  verified: boolean;
+  email?: string;
+  domain?: string;
+  disposable?: boolean;
+  phone?: string;
 }
 export interface SessionInfo {
   session_id: string;
@@ -91,7 +103,7 @@ export class CredflareError extends Error {
   get type(): CredflareErrorType {
     return this.status === 0 ? 'network' : this.status === 401 ? 'session_unavailable' : this.status === 409 ? 'verification_closed' : this.status === 422 ? 'validation' : 'api';
   }
-  constructor(message: string, public readonly status: number, public readonly errors: unknown = [], public readonly code: ErrorCode | (string & {}) | null = null) {
+  constructor(message: string, public readonly status: number, public readonly errors: unknown = [], public readonly code: ErrorCode | (string & {}) | null = null, public readonly details: Record<string, unknown> = {}) {
     super(message);
     this.name = 'CredflareError';
   }
@@ -122,7 +134,8 @@ export async function request<T>(fetcher: Fetch, url: string, init: RequestInit)
   if (!response.ok || body.success !== true) {
     const message = 'message' in body && typeof body.message === 'string' ? body.message : 'Request failed.';
     const code = 'code' in body && typeof body.code === 'string' ? body.code : null;
-    throw new CredflareError(message, response.status, 'errors' in body ? body.errors : [], code);
+    const {success: _success, message: _message, errors, code: _code, ...details} = body as Record<string, unknown>;
+    throw new CredflareError(message, response.status, errors ?? [], code, details);
   }
   if (!('data' in body)) throw new CredflareError('Credflare returned an invalid response.', response.status);
   return body.data as T;
@@ -142,8 +155,8 @@ export class CredflareSession {
     if (apiBase(next.api_base_url) !== this.base || !/^[0-9a-f-]{36}$/i.test(next.session_id) || !next.token) throw new Error('Invalid replacement session.');
     this.session = next;
   }
-  private call<T>(method: string, suffix = '', body?: BodyInit, key?: string, signal?: AbortSignal): Promise<T> {
-    if (method === 'POST' && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key ?? '')) throw new Error('A UUID request key is required for uploads and submissions.');
+  private call<T>(method: string, suffix = '', body?: BodyInit, key?: string, signal?: AbortSignal, keyed = method === 'POST'): Promise<T> {
+    if (keyed && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key ?? '')) throw new Error('A UUID request key is required for uploads and submissions.');
     const headers: Record<string, string> = { Accept: 'application/json', Authorization: `Bearer ${this.session.token}` };
     if (typeof body === 'string') headers['Content-Type'] = 'application/json';
     if (key) headers['X-Idempotency-Key'] = key;
@@ -176,13 +189,22 @@ export class CredflareSession {
   submitLocation(submission: Omit<LocationSubmission, 'type'>, key: string, signal?: AbortSignal): Promise<{ id: number }> {
     return this.submit({ type: 'location_verification', ...submission }, key, signal);
   }
+  submitAnswers(fields: Record<string, unknown>, key: string, signal?: AbortSignal): Promise<{ id: number }> {
+    return this.submit({ type: 'form_submission', fields }, key, signal);
+  }
+  requestCode(channel: CodeChannel, destination: string, signal?: AbortSignal): Promise<CodeRequest> {
+    return this.call('POST', `/${channel}-codes`, JSON.stringify({ [channel]: destination }), undefined, signal, false);
+  }
+  confirmCode(channel: CodeChannel, code: string, signal?: AbortSignal): Promise<CodeConfirmation> {
+    return this.call('POST', `/${channel}-codes/confirm`, JSON.stringify({ code }), undefined, signal, false);
+  }
   cancel(signal?: AbortSignal): Promise<null> { return this.call('DELETE', '', undefined, undefined, signal); }
 }
 
 export {captureSteps, capturePolicy, isCaptureSupported, methodSummary} from './capture.js';
 export type {CaptureSource, CaptureStep, CapturePolicy} from './capture.js';
 
-export {requiresSelfie, requiresFacial, requiresLocation, needsHostSteps, selfieFileTypes, nextStep, documentsNextKey} from './workflow.js';
+export {requiresSelfie, requiresFacial, requiresLocation, needsHostSteps, selfieFileTypes, nextStep, documentsNextKey, hasOutstanding, refreshOutcome, receiptKey} from './workflow.js';
 export type {FlowStep} from './workflow.js';
 export * from './spec.generated.js';
 export {text, verifierName} from './copy.js';
@@ -195,5 +217,12 @@ export {createReplayProvider} from './faces.js';
 export type {FaceSignalProvider} from './faces.js';
 export {acquireFix, fixProblem, locationCopy, locationErrorKey, locationRejection, locationSubmission, LocationError} from './location.js';
 export type {LocationErrorCode, LocationFix, LocationProvider} from './location.js';
+export {conditionHolds, isShown, showIfMatches, similarity} from './conditions.js';
+export type {ShowIf, ShowIfCondition} from './conditions.js';
+export {answerProblems, answersPayload, canAskQuestions, isEmptyAnswer, questionProblem, visibleQuestions} from './questions.js';
+export type {Answers, Question, QuestionProblem} from './questions.js';
+export {rejectionCopy, rejectionScreen} from './rejections.js';
+export type {RejectionContext, RejectionScreen} from './rejections.js';
+export {codeDestinationProblem, normalizePhone, secondsUntil} from './codes.js';
 export {challengeRejected, facialMetadata, livenessErrorMessage, sendLivenessEvidence} from './liveness.js';
 export type {GestureEvidence, LivenessEvidence, PendingUpload} from './liveness.js';
