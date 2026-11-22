@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { once } from 'node:events';
-import { CredflareSession, CredflareError } from '../dist/index.js';
+import { CredflareSession, CredflareError, refreshFailureOutcome } from '../dist/index.js';
 let server, base;
 const calls = [];
 before(async () => {
@@ -20,6 +20,7 @@ before(async () => {
       return res.end(await readFile(new URL(`./fixtures/rejections/${rejection}.json`, import.meta.url)));
     }
     const fixture = req.headers.authorization === 'Bearer wrong' ? 'unauthorized'
+      : req.headers.authorization === 'Bearer closed' && req.method === 'GET' ? 'session-closed'
       : req.url.endsWith('/handoff') ? 'handoff'
       : /\/(email|phone)-codes\/confirm$/.test(req.url) ? 'email-code-confirm'
       : req.url.endsWith('/email-codes') ? 'email-code-request'
@@ -32,7 +33,7 @@ before(async () => {
       : req.url.endsWith('/submit') ? 'submission'
       : req.url.endsWith('/uploads/biometrics') ? ({gesture: 'gesture-upload', liveness_video: 'video-upload', selfie: 'selfie-upload'}[subtype] ?? 'facial-upload')
       : req.url.endsWith('/uploads/documents') ? 'upload' : 'session';
-    res.writeHead(fixture === 'unauthorized' ? 401 : ['location-rejection', 'questionnaire-hidden-answer'].includes(fixture) ? 422 : fixture.endsWith('-code-request') ? 202 : fixture === 'session' ? 200 : 201, { 'Content-Type': 'application/json' });
+    res.writeHead(fixture === 'unauthorized' ? 401 : fixture === 'session-closed' ? 409 : ['location-rejection', 'questionnaire-hidden-answer'].includes(fixture) ? 422 : fixture.endsWith('-code-request') ? 202 : fixture === 'session' ? 200 : 201, { 'Content-Type': 'application/json' });
     res.end(await readFile(new URL(`./fixtures/${fixture}.json`, import.meta.url)));
   }).listen(0, '127.0.0.1');
   await once(server, 'listening');
@@ -314,4 +315,16 @@ test('a hidden question answer comes back as a field error from the submit route
   assert.equal(error.status, 422);
   assert.equal(error.code, null);
   assert.deepEqual(error.errors, {'fields.employer': ['This question is not shown for the answers given.']});
+});
+
+test('a closed case on refresh shows the receipt while other failures ask to try again', async () => {
+  const closed = await session('closed').get().catch(error => error);
+  assert.ok(closed instanceof CredflareError);
+  assert.equal(closed.status, 409);
+  assert.equal(closed.type, 'verification_closed');
+  assert.equal(closed.code, null);
+  assert.equal(refreshFailureOutcome(closed), 'receipt');
+  const unauthorized = await session('wrong').get().catch(error => error);
+  assert.equal(refreshFailureOutcome(unauthorized), 'refresh_failed');
+  assert.equal(refreshFailureOutcome(new TypeError('fetch failed')), 'refresh_failed');
 });

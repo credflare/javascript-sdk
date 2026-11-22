@@ -83,9 +83,15 @@ Location shows a consent screen (naming a reference place by its label when the 
 
 `mountRemainingSteps` also asks the profile's questions and confirms email addresses and phone numbers, so the remaining order is questions, documents, then the verification requirements in profile order. Questions follow `show_if`: a hidden question is not shown, not validated and not sent (`visibleQuestions`, `answerProblems`, `answersPayload`, `isShown`). Email and phone steps ask for the address or number, send a code (`requestCode`), take the six digit code (`confirmCode`) and offer a new code when `resend_available_at` passes.
 
-After every submit and code confirmation the SDK fetches the session again. It continues while the session is open and something is still outstanding (a workflow can add a requirement, such as a phone check, after an answer) and shows the receipt otherwise. When the fetch fails it shows `errors.refresh_failed` with a retry, never the receipt.
+After every submit and code confirmation the SDK fetches the session again. It continues while the session is open and something is still outstanding (a workflow can add a requirement, such as a phone check, after an answer) and shows the receipt otherwise. A `409` means the case is closed (completed, rejected or expired) and accepts nothing more, so the receipt is shown (`refreshFailureOutcome`). Any other failure shows `errors.refresh_failed` with a retry, never the receipt.
 
 A `422` with a known `code` shows the spec rejection screen (`rejectionScreen`): title, message, who asked for the evidence, the help line and one action (`retry`, `restart`, `reenter_code`, `new_code`, `wait` or `leave`). Any other `422` shows the server message with a retry.
+
+The help line names the requester's `help_email` as a `mailto:` link when the session has one, otherwise an `http` or `https` `help_url`, otherwise the requester by name.
+
+A `leave` rejection (such as `phone.not_configured` or `phone.send_limit`) cannot be resolved in the app. When `onLeave` is passed, the screen offers the leave action and calling it ends the flow with the rejection code, for example `onLeave: code => host.needsAction(code)`, so the host app can tell the applicant what to do next. It is never reported as a cancellation.
+
+With `handoff: true`, `mountRemainingSteps` offers "Continue on your phone". It asks for a handoff link (`session.createHandoff()`), shows it as a QR code (`qrSvg`) with the minutes left, offers a new code when it expires and polls the session until the phone finishes, then shows the receipt. The link carries a one time token in its fragment; never log or store it.
 
 When the browser reports more than one camera, the liveness screen shows a camera picker; changing the camera starts the step again with a new challenge.
 

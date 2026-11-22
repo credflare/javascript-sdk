@@ -2,6 +2,7 @@ import type {SessionInfo} from './index.js';
 import type {CopyKey} from './spec.generated.js';
 import {requirements} from './spec.generated.js';
 import {canAskQuestions} from './questions.js';
+import {CredflareError} from './index.js';
 
 export type FlowStep = 'questions' | 'documents' | 'facial_verification' | 'location_verification' | 'email_verification' | 'phone_verification' | 'host' | 'done';
 const inSdk = ['facial_verification', 'location_verification', 'email_verification', 'phone_verification'];
@@ -26,6 +27,9 @@ export function hasOutstanding(info: SessionInfo): boolean {
 }
 export function refreshOutcome(info: SessionInfo): 'continue' | 'receipt' {
   return hasOutstanding(info) ? 'continue' : 'receipt';
+}
+export function refreshFailureOutcome(error: unknown): 'receipt' | 'refresh_failed' {
+  return error instanceof CredflareError && error.status === 409 ? 'receipt' : 'refresh_failed';
 }
 export function nextStep(info: SessionInfo): FlowStep {
   if (!hasOutstanding(info)) return 'done';

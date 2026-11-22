@@ -211,7 +211,7 @@ export class CredflareSession {
 export {captureSteps, capturePolicy, isCaptureSupported, methodSummary} from './capture.js';
 export type {CaptureSource, CaptureStep, CapturePolicy} from './capture.js';
 
-export {requiresSelfie, requiresFacial, requiresLocation, needsHostSteps, selfieFileTypes, nextStep, documentsNextKey, hasOutstanding, refreshOutcome, receiptKey} from './workflow.js';
+export {requiresSelfie, requiresFacial, requiresLocation, needsHostSteps, selfieFileTypes, nextStep, documentsNextKey, hasOutstanding, refreshOutcome, refreshFailureOutcome, receiptKey} from './workflow.js';
 export type {FlowStep} from './workflow.js';
 export * from './spec.generated.js';
 export {text, verifierName} from './copy.js';

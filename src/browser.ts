@@ -8,7 +8,7 @@ import {answerProblems, answersPayload, visibleQuestions} from './questions.js';
 import type {Answers, Question} from './questions.js';
 import {codeDestinationProblem, normalizePhone, secondsUntil} from './codes.js';
 import {qrSvg} from './qr.js';
-import {refreshOutcome} from './workflow.js';
+import {refreshFailureOutcome, refreshOutcome} from './workflow.js';
 import type {CodeChannel, CodeRequest} from './index.js';
 import {text, verifierName} from './copy.js';
 import type {CopyValues} from './copy.js';
@@ -628,7 +628,7 @@ export function mountQuestions(element: HTMLElement, session: CredflareSession, 
 export interface ContactCodeOptions {
   channel: CodeChannel;
   onSubmitted: () => void;
-  onLeave?: () => void;
+  onLeave?: (code: string | null) => void;
 }
 
 export function mountContactCode(element: HTMLElement, session: CredflareSession, info: SessionInfo, options: ContactCodeOptions): () => void {
@@ -761,7 +761,7 @@ export function mountContactCode(element: HTMLElement, session: CredflareSession
         resendAt = after ?? resendAt ?? new Date(Date.now() + rules.resend_seconds * 1000).toISOString();
         return last ? code() : enter();
       },
-      leave: options.onLeave,
+      leave: options.onLeave ? () => options.onLeave?.(screen.code) : undefined,
     };
     render(...rejectionView(screen, actions[screen.action]));
   }
@@ -841,7 +841,7 @@ export function mountHandoff(element: HTMLElement, session: CredflareSession, op
   }
 
   poll = setInterval(() => {
-    session.get(abort.signal).then(info => { if (!disposed && refreshOutcome(info) === 'receipt') options.onFinished(); }, () => undefined);
+    session.get(abort.signal).then(info => { if (!disposed && refreshOutcome(info) === 'receipt') options.onFinished(); }, error => { if (!disposed && refreshFailureOutcome(error) === 'receipt') options.onFinished(); });
   }, options.pollMs ?? 5000);
   void create();
   return () => { disposed = true; abort.abort(); stop(); if (poll) clearInterval(poll); element.replaceChildren(); element.classList.remove('cf-root'); };
@@ -853,7 +853,7 @@ export interface RemainingStepsOptions {
   geolocation?: Geolocation;
   onDocuments?: (info: SessionInfo) => void;
   onDone?: () => void;
-  onLeave?: () => void;
+  onLeave?: (code: string | null) => void;
   handoff?: boolean;
 }
 
@@ -868,14 +868,19 @@ export function mountRemainingSteps(element: HTMLElement, session: CredflareSess
     if (key) received.push(say(key));
     void advance();
   };
+  let last: SessionInfo | undefined;
   const advance = async () => {
     dispose?.(); dispose = undefined;
     installStyles();
     element.classList.add('cf-root');
     element.replaceChildren(status);
     let info: SessionInfo;
-    try { info = await session.get(); } catch {
+    try { info = last = await session.get(); } catch (error) {
       if (disposed) return;
+      if (last && refreshFailureOutcome(error) === 'receipt') {
+        dispose = mountReceipt(element, last, {received, onDone: options.onDone});
+        return;
+      }
       const retry = button(say('common.try_again'));
       retry.onclick = () => void advance();
       element.replaceChildren(notice(say('errors.refresh_failed')), retry);
@@ -910,7 +915,7 @@ export function mountRemainingSteps(element: HTMLElement, session: CredflareSess
       return;
     }
     if (step === 'email_verification' || step === 'phone_verification') {
-      dispose = mountContactCode(target, session, info, {channel: step === 'email_verification' ? 'email' : 'phone', onSubmitted: submitted(step), onLeave: options.onLeave ?? options.onDone});
+      dispose = mountContactCode(target, session, info, {channel: step === 'email_verification' ? 'email' : 'phone', onSubmitted: submitted(step), onLeave: options.onLeave});
       return;
     }
     dispose = mountReceipt(target, info, {received, hostSteps: step === 'host', onDone: options.onDone});
