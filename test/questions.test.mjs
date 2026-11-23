@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {execFileSync} from 'node:child_process';
-import {answerProblems, answersPayload, canAskQuestions, conditionHolds, earlierAnswers, isShown, needsHostSteps, nextStep, requirements, text, visibleQuestions} from '../dist/index.js';
+import {answerProblems, answersPayload, canAskQuestions, conditionHolds, earlierAnswers, similarity, startingAnswers, isShown, needsHostSteps, nextStep, requirements, text, visibleQuestions} from '../dist/index.js';
 
 const load = async name => JSON.parse(await readFile(new URL(`./fixtures/${name}.json`, import.meta.url)));
 const cases = await load('show-if-cases');
@@ -179,4 +179,84 @@ test('earlier answers from the session reveal questions after a refresh and are 
   assert.equal(answerProblems(info.profile.form_schema, {}, earlier).employer.key, 'questions.required');
   assert.deepEqual(answersPayload(info.profile.form_schema, {employer: 'Acme'}, earlier), {employer: 'Acme'});
   assert.deepEqual(earlierAnswers({...info, profile: {...info.profile, form_answers: undefined}}, {employment: 'Student'}), {employment: 'Student'});
+});
+
+test('clearing an answer that was asked again hides its follow ups and clears it on the server', () => {
+  const questions = [question('sources'), question('sources_other')];
+  const earlier = {sources: ['Other']};
+  const answers = startingAnswers(questions, earlier);
+  assert.deepEqual(answers, {sources: ['Other']});
+  assert.deepEqual(visibleQuestions(questions, answers, earlier).map(item => item.key), ['sources', 'sources_other']);
+  delete answers.sources;
+  assert.deepEqual(visibleQuestions(questions, answers, earlier).map(item => item.key), ['sources']);
+  assert.deepEqual(answerProblems(questions, answers, earlier), {});
+  assert.deepEqual(answersPayload(questions, answers, earlier), {sources: null});
+  assert.deepEqual(answersPayload([question('sources_other')], {}, {sources: ['Salary']}), {});
+});
+
+test('a form of optional questions left empty sends an empty object', () => {
+  const optional = schema.filter(item => !item.required && !item.show_if);
+  assert.ok(optional.length > 1);
+  assert.deepEqual(answerProblems(optional, {}), {});
+  assert.deepEqual(answersPayload(optional, {}), {});
+});
+
+test('choices are sent exactly as configured', () => {
+  const employment = {...question('employment'), options: [' Employed ', 'Student']};
+  assert.deepEqual(answerProblems([employment], {employment: ' Employed '}), {});
+  assert.deepEqual(answersPayload([employment], {employment: ' Employed '}), {employment: ' Employed '});
+});
+
+test('tiny and huge number bounds compare exactly', () => {
+  const income = {...question('income'), show_if: null, min: null, max: 0.0000001};
+  const problem = value => answerProblems([income], {income: value}).income?.key ?? null;
+  assert.equal(problem('0.0000001'), null);
+  assert.equal(problem('0.0000001000000000000000000001'), 'questions.number_max');
+  const large = {...income, max: 1e21};
+  assert.equal(answerProblems([large], {income: '1000000000000000000000'}).income, undefined);
+  assert.equal(answerProblems([large], {income: '1000000000000000000000.1'}).income.key, 'questions.number_max');
+});
+
+test('a revealed question of an unknown type hands the form to the host', () => {
+  const future = {...question('employer'), type: 'signature'};
+  const questions = [question('employment'), future];
+  assert.ok(canAskQuestions(questions));
+  assert.ok(!canAskQuestions(questions, {}, {employment: 'Employed'}));
+  assert.ok(!canAskQuestions(questions, {employment: 'Employed'}));
+});
+
+const reference = await (async () => {
+  for (const base of ['../.sdk-spec/', '../../sdk-spec/']) {
+    try { return await import(new URL(`${base}scripts/conditions.mjs`, import.meta.url)); } catch {}
+  }
+  return null;
+})();
+
+test('conditions agree with the spec reference evaluator on edge inputs', {skip: !reference && 'the spec checkout is not available'}, () => {
+  const inputs = [
+    ['regex', '\\d+', '\u0663\u0664'], ['regex', '^\\p{Nd}+$', '\u0663\u0664'], ['regex', '^[0-9]$', '\uff11'],
+    ['equals', '1e400', '1e401'], ['gt', '1e400', '1'], ['lt', '-1e400', '0'], ['equals', 'Infinity', 'Infinity'],
+    ['equals', ' 10 ', '10'], ['contains', 'Ä', '\u0041\u0308'], ['equals', '\u00c5', '\u0041\u030a'],
+    ['fuzzy_match', {text: 'J\u00f6rg  M\u00fcller'}, 'jorg muller'], ['fuzzy_match', {text: '\ud83d\ude00 Acme'}, '\ud83d\ude00 acme'],
+    ['fuzzy_match', {text: 'Acme'}, '\ud800 acme'], ['contains', '\u0130', 'i\u0307'],
+  ];
+  const cases = [...cases_conditions(), ...inputs.map(([op, value, answer]) => ({condition: {path: 'form.q', op, value}, form: {q: answer}}))];
+  for (const item of cases) assert.equal(conditionHolds(item.condition, {form: item.form}), reference.test(item.condition, {form: item.form}), JSON.stringify(item));
+});
+
+function cases_conditions() { return cases.conditions; }
+
+test('fuzzy matching does not need TextEncoder', () => {
+  const script = `
+    delete globalThis.TextEncoder;
+    const sdk = await import(${JSON.stringify(new URL('../dist/index.js', import.meta.url).href)});
+    const {readFileSync} = await import('node:fs');
+    const cases = JSON.parse(readFileSync(${JSON.stringify(new URL('./fixtures/show-if-cases.json', import.meta.url).pathname)}, 'utf8'));
+    for (const item of cases.conditions.filter(item => item.condition.op === 'fuzzy_match')) {
+      if (sdk.conditionHolds(item.condition, {form: item.form}) !== item.expect) throw new Error(item.name);
+    }
+    if (Math.round(sdk.similarity('\u{1F600}a', '\u{1F600}b')) !== 80) throw new Error('bytes');
+  `;
+  execFileSync(process.execPath, ['--input-type=module', '-e', script], {stdio: 'pipe'});
+  assert.equal(similarity('\ud800', '\ufffd'), 100);
 });

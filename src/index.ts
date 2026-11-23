@@ -226,7 +226,7 @@ export {acquireFix, fixProblem, locationCopy, locationErrorKey, locationRejectio
 export type {LocationErrorCode, LocationFix, LocationProvider} from './location.js';
 export {conditionHolds, isShown, showIfMatches, similarity} from './conditions.js';
 export type {ShowIf, ShowIfCondition} from './conditions.js';
-export {answerFor, answerProblems, answersPayload, canAskQuestions, compareNumberText, foundersAnswer, hasAnswer, isEmptyAnswer, isSupportedQuestion, questionProblem, submittedValue, visibleQuestions} from './questions.js';
+export {answerFor, answerProblems, answersPayload, canAskQuestions, compareNumberText, foundersAnswer, hasAnswer, isEmptyAnswer, isSupportedQuestion, questionProblem, startingAnswers, submittedValue, visibleQuestions} from './questions.js';
 export type {Answers, FoundersAnswer, Question, QuestionProblem} from './questions.js';
 export {rejectionCopy, rejectionScreen} from './rejections.js';
 export type {RejectionContext, RejectionScreen} from './rejections.js';

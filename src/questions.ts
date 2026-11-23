@@ -47,18 +47,26 @@ export function foundersAnswer(value: unknown): FoundersAnswer | undefined {
   return includes || names.length ? {includes_applicant: includes, names} : undefined;
 }
 
+const trimmedTypes: readonly string[] = ['number', 'date', 'email', 'phone', 'tel'];
+
 export function submittedValue(question: Question, value: unknown): unknown {
   if (question.type === 'consent') return typeof value === 'boolean' ? value : undefined;
   if (question.type === 'founders') return foundersAnswer(value);
   if (isEmptyAnswer(value) || (typeof value === 'string' && value.trim() === '')) return undefined;
-  if (typeof value !== 'string' || question.type === 'text' || question.type === 'textarea') return value;
+  if (typeof value !== 'string' || !trimmedTypes.includes(question.type)) return value;
   const trimmed = value.trim();
   if (question.type === 'number' && numberPattern.test(trimmed) && String(Number(trimmed)) === trimmed) return Number(trimmed);
   return trimmed;
 }
 
-export function canAskQuestions(schema: Question[] | null | undefined, earlier: Answers = {}): boolean {
-  return visibleQuestions(schema, {}, earlier).every(isSupportedQuestion);
+export function startingAnswers(schema: Question[] | null | undefined, earlier: Answers = {}): Answers {
+  const answers: Answers = {};
+  for (const question of schema ?? []) if (hasAnswer(earlier, question.key)) answers[question.key] = earlier[question.key];
+  return answers;
+}
+
+export function canAskQuestions(schema: Question[] | null | undefined, earlier: Answers = {}, answers: Answers = startingAnswers(schema, earlier)): boolean {
+  return visibleQuestions(schema, answers, earlier).every(isSupportedQuestion);
 }
 
 export function visibleQuestions(schema: Question[] | null | undefined, answers: Answers, earlier: Answers = {}): Question[] {
@@ -69,6 +77,7 @@ export function visibleQuestions(schema: Question[] | null | undefined, answers:
     shown.push(question);
     const value = isSupportedQuestion(question) ? submittedValue(question, answerFor(answers, question.key)) : undefined;
     if (value !== undefined) context[question.key] = value;
+    else if (isSupportedQuestion(question)) delete context[question.key];
   }
   return shown;
 }
@@ -96,8 +105,19 @@ function compareMagnitude(a: {whole: string; fraction: string}, b: {whole: strin
   return x === y ? 0 : x < y ? -1 : 1;
 }
 
+function plainDecimal(value: number): string {
+  const [mantissa = '', power] = String(value).split('e');
+  if (power === undefined) return mantissa;
+  const negative = mantissa.startsWith('-');
+  const [whole = '', fraction = ''] = mantissa.replace('-', '').split('.');
+  const digits = whole + fraction;
+  const point = whole.length + Number(power);
+  const body = point <= 0 ? `0.${'0'.repeat(-point)}${digits}` : point >= digits.length ? digits + '0'.repeat(point - digits.length) : `${digits.slice(0, point)}.${digits.slice(point)}`;
+  return (negative ? '-' : '') + body;
+}
+
 export function compareNumberText(text: string, bound: number): number {
-  const limit = String(bound);
+  const limit = Number.isFinite(bound) ? plainDecimal(bound) : String(bound);
   if (!numberPattern.test(text) || !numberPattern.test(limit)) return Math.sign(Number(text) - bound);
   const a = decimal(text), b = decimal(limit);
   if (a.negative !== b.negative) return a.negative ? -1 : 1;
@@ -119,7 +139,7 @@ export function questionProblem(question: Question, value: unknown): QuestionPro
       return typeof value === 'string' && [...value].length <= rules.text_max_length ? null : {key: 'questions.text_too_long'};
     case 'number': {
       const finite = typeof value === 'number' && Number.isFinite(value);
-      const text = typeof value === 'number' ? String(value) : String(value).trim();
+      const text = typeof value === 'number' ? (finite ? plainDecimal(value) : String(value)) : String(value).trim();
       if (!finite && !(typeof value === 'string' && numberPattern.test(text))) return {key: 'questions.invalid_number'};
       if (typeof question.min === 'number' && compareNumberText(text, question.min) < 0) return {key: 'questions.number_min', values: {min: question.min}};
       if (typeof question.max === 'number' && compareNumberText(text, question.max) > 0) return {key: 'questions.number_max', values: {max: question.max}};
@@ -160,6 +180,7 @@ export function answersPayload(schema: Question[] | null | undefined, answers: A
     if (!isSupportedQuestion(question)) continue;
     const value = submittedValue(question, answerFor(answers, question.key));
     if (value !== undefined) fields[question.key] = value;
+    else if (hasAnswer(earlier, question.key)) fields[question.key] = null;
   }
   return fields;
 }

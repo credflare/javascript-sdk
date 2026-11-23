@@ -103,8 +103,25 @@ function common(a: Uint8Array, b: Uint8Array): number {
   return max + common(a.subarray(0, p1), b.subarray(0, p2)) + common(a.subarray(p1 + max), b.subarray(p2 + max));
 }
 
+export function utf8(value: string): Uint8Array {
+  const bytes: number[] = [];
+  for (let index = 0; index < value.length; index++) {
+    let code = value.charCodeAt(index);
+    if (code >= 0xd800 && code <= 0xdbff && index + 1 < value.length) {
+      const low = value.charCodeAt(index + 1);
+      if (low >= 0xdc00 && low <= 0xdfff) { code = 0x10000 + ((code - 0xd800) << 10) + (low - 0xdc00); index++; }
+    }
+    if (code >= 0xd800 && code <= 0xdfff) code = 0xfffd;
+    if (code < 0x80) bytes.push(code);
+    else if (code < 0x800) bytes.push(0xc0 | (code >> 6), 0x80 | (code & 63));
+    else if (code < 0x10000) bytes.push(0xe0 | (code >> 12), 0x80 | ((code >> 6) & 63), 0x80 | (code & 63));
+    else bytes.push(0xf0 | (code >> 18), 0x80 | ((code >> 12) & 63), 0x80 | ((code >> 6) & 63), 0x80 | (code & 63));
+  }
+  return Uint8Array.from(bytes);
+}
+
 export function similarity(a: string, b: string): number {
-  const x = new TextEncoder().encode(a), y = new TextEncoder().encode(b);
+  const x = utf8(a), y = utf8(b);
   return x.length + y.length === 0 ? 0 : (common(x, y) * 2 * 100) / (x.length + y.length);
 }
 
