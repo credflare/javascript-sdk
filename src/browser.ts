@@ -712,6 +712,8 @@ export interface HostActionDetails {
   code: string | null;
 }
 
+const onLeaveScreen = new WeakMap<HTMLElement, () => void>();
+
 function hostAction(element: HTMLElement, code: string | null, handler?: (details: HostActionDetails) => void): void {
   handler?.({code});
   element.dispatchEvent(new CustomEvent<HostActionDetails>('credflare:host-action-required', {bubbles: true, detail: {code}}));
@@ -882,6 +884,7 @@ export function mountContactCode(element: HTMLElement, session: CredflareSession
     };
     if (screen.action === 'wait') return actions.wait();
     render(...rejectionView(screen, actions[screen.action]));
+    if (screen.action === 'leave') onLeaveScreen.get(element)?.();
   }
 
   enter();
@@ -1034,6 +1037,7 @@ export function mountRemainingSteps(element: HTMLElement, session: CredflareSess
         dispose?.();
         dispose = mountHandoff(element, session, {onBack: () => void advance(), onFinished: finished => void advance(finished)});
       };
+      onLeaveScreen.set(inner, () => offer.remove());
       element.replaceChildren(inner, offer);
       return mountStep(inner, step, info);
     }

@@ -267,6 +267,24 @@ try {
 
   await fresh();
   await evaluate(`(() => {
+    routes['GET /'] = () => reply(200, fx['requirement-added-session']);
+    routes['POST /phone-codes'] = () => reply(422, fx['rejections/phone.send_limit']);
+    window.handed = [];
+    browser.mountRemainingSteps(app, session, {handoff: true, onHostActionRequired: ({code}) => handed.push(code)});
+    return true;
+  })()`);
+  await until(`!!app.querySelector('input[type=tel]')`);
+  assert.ok((await screen()).includes(await evaluate(`say('handoff.action')`)), 'the phone offer is shown while a code can still be sent');
+  await evaluate(`(() => { type(app.querySelector('input[type=tel]'), '+237650000001'); submitForm(); return true; })()`);
+  await until(`app.innerText.includes(say('rejection.code_send_limit.title'))`);
+  assert.ok(!(await screen()).includes(await evaluate(`say('handoff.action')`)), 'the send limit screen does not offer to continue on a phone');
+  await evaluate(`press(say(sdk.rejections.actions.leave.label)), true`);
+  await until(`app.innerText.includes(say('receipt.host_steps'))`);
+  assert.deepEqual(await evaluate('handed'), ['phone.send_limit']);
+  console.log('PASS the send limit screen hands its code to the host without the phone offer');
+
+  await fresh();
+  await evaluate(`(() => {
     const sent = structuredClone(fx['phone-code-request']);
     sent.data.resend_available_at = new Date(Date.now() - 1000).toISOString();
     routes['POST /phone-codes'] = () => reply(202, sent);
