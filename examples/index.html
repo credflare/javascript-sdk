@@ -8,7 +8,7 @@
 <script type="module">
 import {cameraPicker, mountHandoff, mountReceipt, mountRemainingSteps} from '/dist/browser.js';
 import {createMediaPipeProvider} from '/dist/mediapipe.js';
-import {CredflareSession, captureSteps, methodSummary, text, verifierName, iconSvgs, nextStep, documentsNextKey, refreshFailureOutcome} from '/dist/index.js';
+import {CredflareSession, captureSteps, methodSummary, text, verifierName, iconSvgs, remainingStep, documentsNextKey, refreshFailureOutcome} from '/dist/index.js';
 const status=document.querySelector('#status'),capture=document.querySelector('#capture'),start=document.querySelector('#start');
 const config=await (await fetch('/config.json')).json();
 const provider=createMediaPipeProvider({wasmBaseUrl:'/vendor/mediapipe/wasm',modelAssetPath:config.faceModel});
@@ -22,7 +22,7 @@ function showHostAction({code}){
 }
 async function refresh(){
  info=await session.get();document.querySelector('#verifier').textContent=info.requester?.name??'';
- if(nextStep(info)!=='documents')return remaining();
+ if(remainingStep(info)!=='documents')return remaining();
  showDocuments();
 }
 function showDocuments(){

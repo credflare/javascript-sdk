@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {execFileSync} from 'node:child_process';
-import {answerProblems, answersPayload, canAskQuestions, conditionHolds, earlierAnswers, similarity, startingAnswers, isShown, needsHostSteps, nextStep, requirements, text, visibleQuestions} from '../dist/index.js';
+import {answerProblems, answersPayload, canAskQuestions, conditionHolds, earlierAnswers, similarity, startingAnswers, isShown, needsHostSteps, remainingStep, requirements, text, visibleQuestions} from '../dist/index.js';
 
 const load = async name => JSON.parse(await readFile(new URL(`./fixtures/${name}.json`, import.meta.url)));
 const cases = await load('show-if-cases');
@@ -132,9 +132,9 @@ test('only visible unsupported questions send the form back to the host', async 
   const info = JSON.parse(await readFile(new URL('./fixtures/questionnaire-session.json', import.meta.url))).data;
   const future = {...question('employer'), key: 'signature', type: 'signature'};
   const withFuture = {...info, profile: {...info.profile, form_schema: [question('employment'), future]}};
-  assert.equal(nextStep(withFuture), 'questions');
+  assert.equal(remainingStep(withFuture), 'questions');
   assert.equal(needsHostSteps(withFuture), false);
-  assert.notEqual(nextStep(withFuture, {employment: 'Employed'}), 'questions');
+  assert.notEqual(remainingStep(withFuture, {employment: 'Employed'}), 'questions');
   assert.equal(needsHostSteps(withFuture, {employment: 'Employed'}), true);
   assert.ok(!canAskQuestions([{...future, show_if: null}]));
 });
@@ -173,7 +173,7 @@ test('earlier answers from the session reveal questions after a refresh and are 
   const info = JSON.parse(await readFile(new URL('./fixtures/questionnaire-earlier-answers-session.json', import.meta.url))).data;
   const earlier = earlierAnswers(info);
   assert.deepEqual(earlier, info.profile.form_answers);
-  assert.equal(nextStep(info), 'questions');
+  assert.equal(remainingStep(info), 'questions');
   assert.deepEqual(visibleQuestions(info.profile.form_schema, {}, earlier).map(item => item.key), ['employer']);
   assert.deepEqual(visibleQuestions(info.profile.form_schema, {}).map(item => item.key), []);
   assert.equal(answerProblems(info.profile.form_schema, {}, earlier).employer.key, 'questions.required');

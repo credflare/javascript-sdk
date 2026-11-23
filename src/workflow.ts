@@ -5,7 +5,9 @@ import {canAskQuestions} from './questions.js';
 import type {Answers} from './questions.js';
 import {CredflareError} from './index.js';
 
-export type FlowStep = 'questions' | 'documents' | 'facial_verification' | 'location_verification' | 'email_verification' | 'phone_verification' | 'host' | 'done';
+/** @deprecated Steps known before questions and contact codes ran in the SDK. Use {@link RemainingStep} with {@link remainingStep}. */
+export type FlowStep = 'documents' | 'facial_verification' | 'location_verification' | 'host' | 'done';
+export type RemainingStep = FlowStep | 'questions' | 'email_verification' | 'phone_verification';
 const inSdk = ['facial_verification', 'location_verification', 'email_verification', 'phone_verification'];
 const capture = ['facial_verification', 'location_verification'];
 
@@ -36,16 +38,24 @@ export function refreshOutcome(info: SessionInfo): 'continue' | 'receipt' {
 export function refreshFailureOutcome(error: unknown): 'receipt' | 'refresh_failed' {
   return error instanceof CredflareError && error.status === 409 ? 'receipt' : 'refresh_failed';
 }
+/** @deprecated Reports questions and contact codes as `host`. Use {@link remainingStep}. */
 export function nextStep(info: SessionInfo, earlier: Answers = earlierAnswers(info)): FlowStep {
+  if (!hasOutstanding(info)) return 'done';
+  if (info.profile?.document_requirements.length) return 'documents';
+  const capturing = info.profile?.verification_requirements.find(item => capture.includes(item.verification_type));
+  if (capturing) return capturing.verification_type as FlowStep;
+  return remainingStep(info, earlier) === 'done' ? 'done' : 'host';
+}
+export function remainingStep(info: SessionInfo, earlier: Answers = earlierAnswers(info)): RemainingStep {
   if (!hasOutstanding(info)) return 'done';
   if (info.profile?.form_schema?.length && canAskQuestions(info.profile.form_schema, earlier)) return 'questions';
   if (info.profile?.document_requirements.length) return 'documents';
   const next = info.profile?.verification_requirements.find(item => inSdk.includes(item.verification_type));
-  if (next) return next.verification_type as FlowStep;
+  if (next) return next.verification_type as RemainingStep;
   return needsHostSteps(info, earlier) ? 'host' : 'done';
 }
-export function receiptKey(step: FlowStep): CopyKey | null {
-  const keys: Partial<Record<FlowStep, CopyKey>> = {
+export function receiptKey(step: RemainingStep): CopyKey | null {
+  const keys: Partial<Record<RemainingStep, CopyKey>> = {
     questions: 'receipt.answers',
     facial_verification: 'receipt.selfie',
     location_verification: 'receipt.location',

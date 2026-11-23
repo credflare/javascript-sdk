@@ -1,7 +1,7 @@
 import {CredflareSession, CredflareError} from './index.js';
 import type {LivenessChallenge, SessionDescriptor, SessionInfo} from './index.js';
-import {earlierAnswers, nextStep, receiptKey} from './workflow.js';
-import type {FlowStep} from './workflow.js';
+import {earlierAnswers, receiptKey, remainingStep} from './workflow.js';
+import type {RemainingStep} from './workflow.js';
 import {rejectionScreen} from './rejections.js';
 import type {RejectionScreen} from './rejections.js';
 import {answerFor, answerProblems, answersPayload, hasAnswer, isSupportedQuestion, startingAnswers, visibleQuestions} from './questions.js';
@@ -1000,7 +1000,7 @@ export function mountRemainingSteps(element: HTMLElement, session: CredflareSess
     dispose = mountReceipt(element, info, {received, hostSteps: true, onDone: options.onDone});
     hostAction(element, code, options.onHostActionRequired);
   };
-  const submitted = (step: FlowStep) => () => {
+  const submitted = (step: RemainingStep) => () => {
     const key = receiptKey(step);
     if (key) received.push(say(key));
     void advance();
@@ -1028,7 +1028,7 @@ export function mountRemainingSteps(element: HTMLElement, session: CredflareSess
       return;
     }
     if (disposed) return;
-    const step = nextStep(info, {...earlierAnswers(info, answered), ...unsent});
+    const step = remainingStep(info, {...earlierAnswers(info, answered), ...unsent});
     if (step === 'documents') return options.onDocuments?.(info);
     if (options.handoff && step !== 'done' && step !== 'host') {
       const inner = node('div');
@@ -1043,7 +1043,7 @@ export function mountRemainingSteps(element: HTMLElement, session: CredflareSess
     }
     return mountStep(element, step, info);
   };
-  const mountStep = (target: HTMLElement, step: FlowStep, info: SessionInfo) => {
+  const mountStep = (target: HTMLElement, step: RemainingStep, info: SessionInfo) => {
     if (step === 'questions') {
       dispose = mountQuestions(target, session, info, {
         earlier: answered,

@@ -19,7 +19,7 @@ export interface DocumentRequirement {
   min_required?: number | null;
   remaining_required?: number | null;
 }
-export type FormField = Question;
+export interface FormField extends Question {}
 export type CodeChannel = keyof typeof requirements.contact_codes.channels;
 export interface CodeRequest {
   channel: CodeChannel;
@@ -211,8 +211,8 @@ export class CredflareSession {
 export {captureSteps, capturePolicy, isCaptureSupported, methodSummary} from './capture.js';
 export type {CaptureSource, CaptureStep, CapturePolicy} from './capture.js';
 
-export {earlierAnswers, requiresSelfie, requiresFacial, requiresLocation, needsHostSteps, selfieFileTypes, nextStep, documentsNextKey, hasOutstanding, refreshOutcome, refreshFailureOutcome, receiptKey} from './workflow.js';
-export type {FlowStep} from './workflow.js';
+export {earlierAnswers, requiresSelfie, requiresFacial, requiresLocation, needsHostSteps, selfieFileTypes, nextStep, remainingStep, documentsNextKey, hasOutstanding, refreshOutcome, refreshFailureOutcome, receiptKey} from './workflow.js';
+export type {FlowStep, RemainingStep} from './workflow.js';
 export * from './spec.generated.js';
 export {text, verifierName} from './copy.js';
 export type {CopyValues} from './copy.js';
