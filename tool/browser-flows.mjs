@@ -94,19 +94,28 @@ try {
   await evaluate(`(() => {
     const rejection = structuredClone(fx['rejections/phone.resend_too_soon']);
     rejection.resend_available_at = new Date(Date.now() + 90000).toISOString();
+    rejection.expires_at = new Date(Date.now() + 540000).toISOString();
+    window.rejection = rejection;
     routes['POST /phone-codes'] = () => reply(422, rejection);
-    browser.mountContactCode(app, session, fx['requirement-added-session'].data, {channel: 'phone', onSubmitted() {}, onLeave() {}});
-    type(app.querySelector('input'), '+237 650 000 001');
+    routes['POST /phone-codes/confirm'] = () => reply(201, fx['email-code-confirm']);
+    window.confirmed = false;
+    browser.mountContactCode(app, session, fx['requirement-added-session'].data, {channel: 'phone', onSubmitted() { window.confirmed = true; }, onLeave() {}});
+    type(app.querySelector('input'), '+44 20 7946 0000');
     submitForm();
     return true;
   })()`);
   await until(`!!app.querySelector('input[autocomplete="one-time-code"]')`);
-  assert.ok((await screen()).includes(await evaluate(`say('rejection.code_resend_too_soon.message')`)));
   const waiting = await screen();
-  assert.ok(waiting.includes('+237 650 000 001'), 'the code screen names the number the applicant typed');
+  assert.ok(waiting.includes(await evaluate(`say('rejection.code_resend_too_soon.message')`)));
+  assert.ok(waiting.includes(await evaluate(`say('contact_code.body', {destination: rejection.destination, minutes: 9})`)), 'the code screen names where the waiting code went and when it expires');
+  assert.ok(!waiting.includes('+44 20 7946 0000') && !waiting.includes('+442079460000'), 'the refused number is not named as where the code went');
+  assert.ok(waiting.includes(await evaluate(`say('phone.change_after')`)), 'a note says a new number can be used after the countdown');
+  assert.ok(waiting.includes(await evaluate(`say('contact_code.sends_remaining', {count: rejection.sends_remaining})`)), 'the sends left come from the rejection');
   assert.match(waiting, /\b(8\d|90)\b/, 'the resend countdown runs to the rejection resend_available_at');
   assert.equal(await evaluate(`[...app.querySelectorAll('button')].find(b => b.textContent === say('contact_code.resend')).disabled`), true);
-  console.log('PASS resend_too_soon without a local request shows the code entry and counts down');
+  await evaluate(`(() => { type(app.querySelector('input[autocomplete="one-time-code"]'), '123456'); submitForm(); return true; })()`);
+  await until('window.confirmed === true');
+  console.log('PASS resend_too_soon without a local request names the waiting code destination, counts down and confirms it');
 
   await fresh();
   await evaluate(`(() => {
@@ -146,6 +155,35 @@ try {
   assert.ok(kept.includes(await evaluate(`say('phone.change_after')`)), 'a note says a new number can be used after the countdown');
   assert.ok(!kept.includes('+237650000002'));
   console.log('PASS a refused new number during the cooldown keeps the code entry for the number that has a code');
+
+  await fresh();
+  await evaluate(`(() => {
+    let sends = 0;
+    const sent = structuredClone(fx['phone-code-request']);
+    sent.data.resend_available_at = new Date(Date.now() - 1000).toISOString();
+    const rejection = structuredClone(fx['rejections/phone.resend_too_soon']);
+    rejection.resend_available_at = new Date(Date.now() + 45000).toISOString();
+    rejection.expires_at = new Date(Date.now() + 600000).toISOString();
+    rejection.destination = '+237*******02';
+    rejection.sends_remaining = 3;
+    window.rejection = rejection;
+    routes['POST /phone-codes'] = () => { sends++; if (sends === 1) return reply(202, sent); if (sends === 2) throw new TypeError('offline'); return reply(422, rejection); };
+    browser.mountContactCode(app, session, fx['requirement-added-session'].data, {channel: 'phone', onSubmitted() {}});
+    type(app.querySelector('input'), '+237650000001');
+    submitForm();
+    return true;
+  })()`);
+  await until(`!!app.querySelector('input[autocomplete="one-time-code"]')`);
+  await evaluate(`press(say('phone.change')), true`);
+  await evaluate(`(() => { type(app.querySelector('input'), '+237650000002'); submitForm(); return true; })()`);
+  await until(`calls.filter(c => c.key === 'POST /phone-codes').length === 2 && !!app.querySelector('input[type=tel]') && !!app.querySelector('.cf-field-error')`);
+  await evaluate(`submitForm(), true`);
+  await until(`calls.filter(c => c.key === 'POST /phone-codes').length === 3 && !!app.querySelector('input[autocomplete="one-time-code"]')`);
+  const lost = await screen();
+  assert.ok(lost.includes(await evaluate(`say('contact_code.body', {destination: rejection.destination, minutes: 10})`)), 'the code entry names the number of the send whose response was lost');
+  assert.ok(!lost.includes(await evaluate(`fx['phone-code-request'].data.destination`)), 'the earlier number is not named once a later code went elsewhere');
+  assert.ok(lost.includes(await evaluate(`say('contact_code.sends_remaining', {count: 3})`)));
+  console.log('PASS a send whose response was lost is named on the code entry when the retry is refused');
 
   await fresh();
   await evaluate(`(() => {

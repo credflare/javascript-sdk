@@ -702,8 +702,9 @@ export interface ContactCodeOptions {
 
 interface PendingCode {
   destination: string;
-  typed: string;
+  typed: string | null;
   sends_remaining: number | null;
+  expires_at: string | null;
 }
 
 export interface HostActionDetails {
@@ -772,7 +773,7 @@ export function mountContactCode(element: HTMLElement, session: CredflareSession
     try {
       const sent: CodeRequest = await session.requestCode(channel, typed(), abort.signal);
       if (disposed || mine !== turn) return;
-      last = {destination: sent.destination, typed: destination, sends_remaining: sent.sends_remaining};
+      last = {destination: sent.destination, typed: destination, sends_remaining: sent.sends_remaining, expires_at: sent.expires_at};
       resendAt = sent.resend_available_at;
       code();
     } catch (cause) {
@@ -833,7 +834,8 @@ export function mountContactCode(element: HTMLElement, session: CredflareSession
     change.onclick = () => { if (!confirming) enter(); };
     const canResend = remaining === null || remaining > 0;
     const extras: Node[] = canResend ? [resend, countdown, ...(remaining === null ? [] : [node('p', 'cf-small', say('contact_code.sends_remaining', {count: remaining}))])] : [];
-    render(node('h2', 'cf-title', say('contact_code.title')), node('p', 'cf-body', say('contact_code.body', {destination: pending.destination, minutes: rules.ttl_minutes})), form, ...extras, change);
+    const minutes = pending.expires_at ? Math.max(1, Math.ceil(secondsUntil(pending.expires_at) / 60)) : rules.ttl_minutes;
+    render(node('h2', 'cf-title', say('contact_code.title')), node('p', 'cf-body', say('contact_code.body', {destination: pending.destination, minutes})), form, ...extras, change);
     if (canResend) { tick(); if (secondsUntil(resendAt) > 0) timer = setInterval(tick, 1000); }
     input.focus();
   }
@@ -859,11 +861,20 @@ export function mountContactCode(element: HTMLElement, session: CredflareSession
       reenter_code: () => (last ? code() : enter()),
       new_code: () => void send(from),
       wait: () => {
-        const after = typeof cause.details.resend_available_at === 'string' ? cause.details.resend_available_at : null;
+        const {details} = cause;
+        const after = typeof details.resend_available_at === 'string' ? details.resend_available_at : null;
         resendAt = after ?? resendAt ?? new Date(Date.now() + rules.resend_seconds * 1000).toISOString();
-        const elsewhere = !!last && last.typed !== destination;
-        if (last) destination = last.typed;
-        else last = {destination, typed: destination, sends_remaining: null};
+        const waiting = typeof details.destination === 'string' && details.destination ? details.destination : null;
+        if (waiting) {
+          const typed = last && last.destination === waiting ? last.typed : null;
+          last = {
+            destination: waiting, typed,
+            sends_remaining: typeof details.sends_remaining === 'number' ? details.sends_remaining : null,
+            expires_at: typeof details.expires_at === 'string' ? details.expires_at : null,
+          };
+        } else if (!last) last = {destination, typed: destination, sends_remaining: null, expires_at: null};
+        const elsewhere = last.typed !== destination;
+        if (last.typed !== null) destination = last.typed;
         code(screen.message, elsewhere ? say(channel === 'email' ? 'email.change_after' : 'phone.change_after') : undefined);
       },
       leave: () => leave(screen.code),
