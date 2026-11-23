@@ -6,6 +6,7 @@ Date: 2026-11-21. Host: macOS 26.3, Apple Silicon. Runtime: Node 26.0.0, TypeScr
 npm test                 # build and unit and contract tests
 npm run check:spec       # generated spec and fixtures match ../sdk-spec
 node tool/browser-camera.mjs
+node tool/browser-flows.mjs
 ```
 
 | Check | Coverage |
@@ -24,5 +25,7 @@ node tool/browser-camera.mjs
 - Without API variables it uses the contract fixtures as the API.
 - With `CREDFLARE_API_URL`, `CREDFLARE_CLIENT_ID`, `CREDFLARE_CLIENT_SECRET` and `CREDFLARE_PROFILE_ID` it creates a case on that backend and runs the same flow against it.
 - With `CREDFLARE_FACE_MODEL` pointing to a local `face_landmarker.task` it also loads the MediaPipe provider on the synthetic camera and checks that it reports no face.
+
+`tool/browser-flows.mjs` drives the browser screens in headless Chrome against fixture responses: the code entry after a `resend_too_soon` with no code on screen, the leave action without a host handler, resend and change locked during a confirmation, a closed case seen by the handoff poll, a camera switch while the face detector starts, a question keyed `constructor` and the founders input.
 
 Pending: a run with a real face in front of a camera on physical devices.
