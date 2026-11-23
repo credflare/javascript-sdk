@@ -7,6 +7,7 @@ npm test                 # build and unit and contract tests
 npm run check:spec       # generated spec and fixtures match ../sdk-spec
 node tool/browser-camera.mjs
 node tool/browser-flows.mjs
+node tool/browser-example.mjs
 ```
 
 | Check | Coverage |
@@ -26,6 +27,8 @@ node tool/browser-flows.mjs
 - With `CREDFLARE_API_URL`, `CREDFLARE_CLIENT_ID`, `CREDFLARE_CLIENT_SECRET` and `CREDFLARE_PROFILE_ID` it creates a case on that backend and runs the same flow against it.
 - With `CREDFLARE_FACE_MODEL` pointing to a local `face_landmarker.task` it also loads the MediaPipe provider on the synthetic camera and checks that it reports no face.
 
-`tool/browser-flows.mjs` drives the browser screens in headless Chrome against fixture responses: the code entry after a `resend_too_soon` with no code on screen, the leave action without a host handler, resend and change locked during a confirmation, a closed case seen by the handoff poll, a camera switch while the face detector starts, a question keyed `constructor` and the founders input.
+`tool/browser-flows.mjs` drives the browser screens in headless Chrome against fixture responses: the code entry after a `resend_too_soon` with no code on screen, the leave action without a host handler, resend and change locked during a confirmation, a closed case seen by the handoff poll, a camera switch while the face detector starts, a question keyed `constructor`, the founders input and a leave that ends on the receipt without the phone offer.
+
+`tool/browser-example.mjs` runs the example server against fixture responses and drives its document capture in headless Chrome with two synthetic cameras: the camera picker, a camera photo and a saved file for each side with previews, retake and change, the uploads with their capture source, the submission in step order, the receipt, and a camera only side on a browser without a camera, which explains why and offers to continue on a phone.
 
 Pending: a run with a real face in front of a camera on physical devices.

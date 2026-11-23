@@ -1,0 +1,10 @@
+{
+    "success": true,
+    "message": "Operation successful",
+    "data": {
+        "session_id": "01a20866-a182-710d-9719-957db5db4859",
+        "token": "test-session-token",
+        "api_base_url": "http://localhost:8018/api/v1",
+        "expires_at": "2026-11-23T13:04:33.000000Z"
+    }
+}
