@@ -12,7 +12,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: credflare/sdk-spec
-          ref: feat/contact-codes-and-questions
           path: .sdk-spec
       - uses: actions/setup-node@v4
         with:
