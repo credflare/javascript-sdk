@@ -22,6 +22,16 @@ test('fills spec defaults when a requirement carries no settings', async () => {
   assert.equal(location.reference, null);
 });
 
+test('video retention days pass through when set and stay null otherwise', () => {
+  const facial = settings => facialSettings([{verification_type: 'facial_verification', settings}]);
+  assert.equal(facial({video_retention_days: 90}).video_retention_days, 90);
+  assert.equal(facial({video_retention_days: 3650}).video_retention_days, 3650);
+  assert.equal(facial({video_retention_days: null}).video_retention_days, null);
+  assert.equal(facial({}).video_retention_days, null);
+  assert.equal(facial(null).video_retention_days, null);
+  assert.equal(facial({video_retention_days: 0}).video_retention_days, null);
+});
+
 test('reference places keep labels only', () => {
   const location = locationSettings([{verification_type: 'location_verification', settings: {reference: {rule: 'outside', places: [{label: 'Depot', latitude: 1, longitude: 2}, {label: ''}]}}}]);
   assert.deepEqual(location.reference, {rule: 'outside', match: 'any', places: [{label: 'Depot'}]});

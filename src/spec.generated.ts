@@ -1,9 +1,9 @@
 // GENERATED FILE, DO NOT EDIT.
-// Source: credflare sdk-spec 1.1.0 (eb176f038a44). Regenerate with scripts/generate.mjs.
+// Source: credflare sdk-spec 1.1.0 (f30a34ca3aac). Regenerate with scripts/generate.mjs.
 /* eslint-disable */
 
 export const specVersion = "1.1.0" as const;
-export const specHash = "eb176f038a44" as const;
+export const specHash = "f30a34ca3aac" as const;
 
 export const liveness = {
   "version": 1,
@@ -145,9 +145,10 @@ export const settings = {
     },
     "video_retention_days": {
       "type": "int",
+      "optional": true,
       "min": 1,
-      "max": 365,
-      "default": 30
+      "max": 3650,
+      "default": null
     }
   },
   "location_verification": {

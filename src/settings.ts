@@ -9,7 +9,7 @@ export interface FacialSettings {
   gestures: GestureName[];
   gesture_count: number;
   record_video: boolean;
-  video_retention_days: number;
+  video_retention_days: number | null;
 }
 export interface ReferencePlaceLabel {
   label: string;
@@ -30,6 +30,8 @@ export interface LocationSettings {
 const isRecord = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 const intIn = (value: unknown, field: {min: number; max: number; default: number}): number =>
   typeof value === 'number' && Number.isInteger(value) && value >= field.min && value <= field.max ? value : field.default;
+const optionalIntIn = (value: unknown, field: {min: number; max: number}): number | null =>
+  typeof value === 'number' && Number.isInteger(value) && value >= field.min && value <= field.max ? value : null;
 const oneOf = <T extends string>(value: unknown, field: {of: readonly T[]; default: T}): T =>
   typeof value === 'string' && (field.of as readonly string[]).includes(value) ? value as T : field.default;
 
@@ -46,7 +48,7 @@ export function parseFacialSettings(raw: unknown): FacialSettings {
     gestures: gestures.length >= spec.gestures.min ? gestures : [...spec.gestures.default],
     gesture_count: intIn(value.gesture_count, spec.gesture_count),
     record_video: typeof value.record_video === 'boolean' ? value.record_video : spec.record_video.default,
-    video_retention_days: intIn(value.video_retention_days, spec.video_retention_days),
+    video_retention_days: optionalIntIn(value.video_retention_days, spec.video_retention_days),
   };
 }
 
