@@ -15,6 +15,7 @@ type Answers = Record<string, unknown> | unknown[];
 const DATE = /^\d{4}-\d{2}-\d{2}([T ][0-9:.]+(Z|[+-]\d{2}:?\d{2})?)?$/;
 const NUMERIC = /^[ \t\n\r\v\f]*[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?[ \t\n\r\v\f]*$/;
 const MAX_PATTERN = 200;
+const FUZZY_LENGTH = 200;
 
 const isList = (value: unknown): value is unknown[] => Array.isArray(value);
 const isMap = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object';
@@ -127,7 +128,7 @@ export function similarity(a: string, b: string): number {
 
 function fuzzy(actual: unknown, expected: unknown): boolean {
   if (!isScalar(actual) || !isMap(expected) || isList(expected) || !isScalar(expected.text)) return false;
-  const normalize = (value: unknown) => asText(value).toLowerCase().trim().replace(/\s+/g, ' ');
+  const normalize = (value: unknown) => Array.from(asText(value).toLowerCase().trim().replace(/\s+/g, ' ')).slice(0, FUZZY_LENGTH).join('');
   return similarity(normalize(actual), normalize(expected.text)) >= Number(expected.min_score ?? 80);
 }
 

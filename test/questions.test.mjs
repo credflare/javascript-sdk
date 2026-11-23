@@ -9,7 +9,7 @@ const cases = await load('show-if-cases');
 const schema = (await load('questionnaire-session')).data.profile.form_schema;
 
 test('replays every server computed show_if case', () => {
-  assert.equal(cases.conditions.length + cases.show_if.length, 62);
+  assert.equal(cases.conditions.length + cases.show_if.length, 65);
   for (const item of cases.conditions) assert.equal(conditionHolds(item.condition, {form: item.form}), item.expect, `condition: ${item.name}`);
   for (const item of cases.show_if) assert.equal(isShown({key: 'q', show_if: item.show_if}, item.form), item.expect, `show_if: ${item.name}`);
   const used = new Set(cases.conditions.map(item => item.condition.op));
