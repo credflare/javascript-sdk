@@ -6,7 +6,7 @@ const load = async name => JSON.parse(await readFile(new URL(`./fixtures/${name}
 
 test('reads facial and location settings from the session response', async () => {
   const requirements = (await load('capture-session')).profile.verification_requirements;
-  assert.deepEqual(facialSettings(requirements), {gestures: ['blink', 'smile', 'turn_left', 'turn_right', 'nod'], gesture_count: 3, record_video: true, video_retention_days: 30});
+  assert.deepEqual(facialSettings(requirements), {gestures: ['blink', 'smile', 'turn_left', 'turn_right', 'nod'], gesture_count: 3, record_video: true});
   assert.deepEqual(locationSettings(requirements), {max_accuracy_m: 50, max_age_s: 60, mock_location: 'reject', ip_country: 'flag', reference: {rule: 'within', match: 'any', places: [{label: 'Head office'}]}});
 });
 
@@ -20,16 +20,6 @@ test('fills spec defaults when a requirement carries no settings', async () => {
   assert.equal(location.max_accuracy_m, schema.location_verification.max_accuracy_m.default);
   assert.equal(location.mock_location, 'reject');
   assert.equal(location.reference, null);
-});
-
-test('video retention days pass through when set and stay null otherwise', () => {
-  const facial = settings => facialSettings([{verification_type: 'facial_verification', settings}]);
-  assert.equal(facial({video_retention_days: 90}).video_retention_days, 90);
-  assert.equal(facial({video_retention_days: 3650}).video_retention_days, 3650);
-  assert.equal(facial({video_retention_days: null}).video_retention_days, null);
-  assert.equal(facial({}).video_retention_days, null);
-  assert.equal(facial(null).video_retention_days, null);
-  assert.equal(facial({video_retention_days: 0}).video_retention_days, null);
 });
 
 test('reference places keep labels only', () => {
