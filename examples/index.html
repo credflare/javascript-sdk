@@ -69,7 +69,7 @@ function captureDocument(requirement){
  form.onsubmit=async event=>{event.preventDefault();if(selected.size!==steps.length){status.textContent=text('capture.check_photo');return;}stopCamera();const controls=form.querySelectorAll('input,button');for(const control of controls)control.disabled=true;
   try{pending??={images:steps.map(step=>selected.get(step.id)),key:crypto.randomUUID()};status.textContent=text('sending.sending');for(const image of pending.images){if(!image.id){const body=new FormData();body.append('file',image.file);body.append('side',image.side);body.append('capture_source',image.source);body.append('document_type_id',String(requirement.document_type.id));image.id=(await session.upload('documents',body,image.key)).id;}}
    await session.submit({type:'document_verification',document_type_id:requirement.document_type.id,evidence:pending.images.map(image=>({file_id:image.id,source:image.source,side:image.side}))},pending.key);
-  }catch(error){status.textContent=error.message;for(const control of controls)control.disabled=false;return;}
+  }catch(error){if(refreshFailureOutcome(error)==='receipt'){status.textContent='';dispose=mountReceipt(capture,info,{received});return;}status.textContent=error.message;for(const control of controls)control.disabled=false;return;}
   received.push(text('receipt.document',{document:requirement.document_type.name}));await afterSubmit();
  };
 }

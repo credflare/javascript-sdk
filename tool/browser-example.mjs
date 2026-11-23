@@ -12,7 +12,7 @@ const root = new URL('../', import.meta.url);
 const fixture = async name => JSON.parse(await readFile(new URL(`test/fixtures/${name}.json`, root)));
 const documents = new URL('test/fixtures/documents/', root).pathname;
 
-let stage = 'documents', session = 'capture-snapshot_and_upload';
+let stage = 'documents', session = 'capture-snapshot_and_upload', closed = false;
 const seen = {uploads: [], submits: []};
 const api = createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', req.headers.origin ?? '*');
@@ -36,7 +36,7 @@ const api = createServer(async (req, res) => {
     seen.uploads.push({side: field('side'), source: field('capture_source'), mime: body.match(/name="file"; filename="[^"]+"\r\nContent-Type: ([^\r]+)/)?.[1]});
     return json(201, 'upload');
   }
-  if (req.url.endsWith('/submit')) { seen.submits.push(JSON.parse(body)); stage = 'done'; return json(201, 'submission'); }
+  if (req.url.endsWith('/submit')) { seen.submits.push(JSON.parse(body)); if (closed) return json(409, 'session-closed'); stage = 'done'; return json(201, 'submission'); }
   res.writeHead(404); res.end();
 });
 api.listen(0, '127.0.0.1');
@@ -134,7 +134,21 @@ try {
   assert.deepEqual(seen.submits[0].evidence.map(item => `${item.side}:${item.source}`), ['front:camera', 'back:camera', 'front:upload', 'back:upload']);
   console.log('PASS camera photos and saved files are uploaded with their source and submitted in step order');
 
-  stage = 'documents'; session = 'capture-snapshot_and_upload';
+  stage = 'documents'; session = 'capture-snapshot_and_upload'; closed = true;
+  await open();
+  await photo(0);
+  await photo(1);
+  await file(2, 'sample-front.png');
+  await file(3, 'sample-back.png');
+  const submitted = seen.submits.length;
+  await evaluate(`[...document.querySelectorAll('#capture button')].find(b => b.textContent === 'Send document').click(), true`);
+  await until(`document.body.innerText.includes('Evidence received') || [...document.querySelectorAll('#capture button')].some(b => b.textContent === 'Send document' && !b.disabled)`);
+  assert.equal(seen.submits.length, submitted + 1);
+  assert.ok(await evaluate(`document.body.innerText.includes('Evidence received')`), 'a closed case ends on the receipt');
+  assert.equal(await evaluate(`[...document.querySelectorAll('#capture button')].some(b => b.textContent === 'Send document')`), false, 'the document cannot be sent again');
+  console.log('PASS a document refused because the case is closed ends on the receipt');
+
+  stage = 'documents'; session = 'capture-snapshot_and_upload'; closed = false;
   await call('Page.addScriptToEvaluateOnNewDocument', {source: `navigator.mediaDevices.getUserMedia = () => Promise.reject(new DOMException('Requested device not found', 'NotFoundError'));`});
   await open();
   await evaluate(`${field(0)}.querySelector('[data-source=camera]').click(), true`);
