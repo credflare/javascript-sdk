@@ -1,9 +1,9 @@
 // GENERATED FILE, DO NOT EDIT.
-// Source: credflare sdk-spec 1.1.0 (1489c6c1b827). Regenerate with scripts/generate.mjs.
+// Source: credflare sdk-spec 1.1.0 (eb176f038a44). Regenerate with scripts/generate.mjs.
 /* eslint-disable */
 
 export const specVersion = "1.1.0" as const;
-export const specHash = "1489c6c1b827" as const;
+export const specHash = "eb176f038a44" as const;
 
 export const liveness = {
   "version": 1,
@@ -424,6 +424,7 @@ export const copy = {
     "email.send": "Send code",
     "email.invalid": "Enter a valid email address.",
     "email.change": "Use a different email address",
+    "email.change_after": "You can use a different email address when the countdown ends.",
     "phone.title": "Confirm your phone number",
     "phone.body": "{verifier} asks you to confirm a phone number. We will send a short code to it by text message.",
     "phone.label": "Phone number",
@@ -431,6 +432,7 @@ export const copy = {
     "phone.send": "Send code",
     "phone.invalid": "Enter the number in international format, starting with + and the country code.",
     "phone.change": "Use a different phone number",
+    "phone.change_after": "You can use a different phone number when the countdown ends.",
     "contact_code.sending": "Sending a code…",
     "contact_code.title": "Enter the code",
     "contact_code.body": "We sent a code to {destination}. It expires in {minutes} minutes.",
