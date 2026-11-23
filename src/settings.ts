@@ -9,7 +9,6 @@ export interface FacialSettings {
   gestures: GestureName[];
   gesture_count: number;
   record_video: boolean;
-  video_retention_days: number;
 }
 export interface ReferencePlaceLabel {
   label: string;
@@ -46,7 +45,6 @@ export function parseFacialSettings(raw: unknown): FacialSettings {
     gestures: gestures.length >= spec.gestures.min ? gestures : [...spec.gestures.default],
     gesture_count: intIn(value.gesture_count, spec.gesture_count),
     record_video: typeof value.record_video === 'boolean' ? value.record_video : spec.record_video.default,
-    video_retention_days: intIn(value.video_retention_days, spec.video_retention_days),
   };
 }
 

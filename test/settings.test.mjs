@@ -6,7 +6,7 @@ const load = async name => JSON.parse(await readFile(new URL(`./fixtures/${name}
 
 test('reads facial and location settings from the session response', async () => {
   const requirements = (await load('capture-session')).profile.verification_requirements;
-  assert.deepEqual(facialSettings(requirements), {gestures: ['blink', 'smile', 'turn_left', 'turn_right', 'nod'], gesture_count: 3, record_video: true, video_retention_days: 30});
+  assert.deepEqual(facialSettings(requirements), {gestures: ['blink', 'smile', 'turn_left', 'turn_right', 'nod'], gesture_count: 3, record_video: true});
   assert.deepEqual(locationSettings(requirements), {max_accuracy_m: 50, max_age_s: 60, mock_location: 'reject', ip_country: 'flag', reference: {rule: 'within', match: 'any', places: [{label: 'Head office'}]}});
 });
 
