@@ -4,7 +4,7 @@ import {earlierAnswers, nextStep, receiptKey} from './workflow.js';
 import type {FlowStep} from './workflow.js';
 import {rejectionScreen} from './rejections.js';
 import type {RejectionScreen} from './rejections.js';
-import {answerFor, answerProblems, answersPayload, hasAnswer, isSupportedQuestion, visibleQuestions} from './questions.js';
+import {answerFor, answerProblems, answersPayload, hasAnswer, isSupportedQuestion, startingAnswers, visibleQuestions} from './questions.js';
 import type {Answers, Question} from './questions.js';
 import {codeDestinationProblem, normalizePhone, secondsUntil} from './codes.js';
 import {qrSvg} from './qr.js';
@@ -167,6 +167,7 @@ export interface LivenessOptions {
   provider?: FaceSignalProvider<HTMLVideoElement>;
   onSubmitted: () => void;
   onSample?: (sample: FaceSample) => void;
+  onClosed?: () => void;
 }
 
 async function defaultProvider(): Promise<FaceSignalProvider<HTMLVideoElement>> {
@@ -368,6 +369,7 @@ export function mountLiveness(element: HTMLElement, session: CredflareSession, i
         if (!disposed) options.onSubmitted();
       } catch (cause) {
         if (disposed) return;
+        if (cause instanceof CredflareError && cause.status === 409 && options.onClosed) { URL.revokeObjectURL(url); stopCamera(); return options.onClosed(); }
         if (cause instanceof CredflareError && cause.status === 422) {
           URL.revokeObjectURL(url); evidence = undefined; stopCamera();
           return render(...rejectionView(rejectionScreen(cause, {requester: info.requester}), () => void run(), 'selfie'));
@@ -394,6 +396,7 @@ export function mountLiveness(element: HTMLElement, session: CredflareSession, i
 export interface LocationOptions {
   geolocation?: Geolocation;
   onSubmitted: () => void;
+  onClosed?: () => void;
 }
 
 function browserFix(geolocation: Geolocation): Promise<LocationFix> {
@@ -458,6 +461,7 @@ export function mountLocation(element: HTMLElement, session: CredflareSession, i
         if (!disposed) options.onSubmitted();
       } catch (cause) {
         if (disposed) return;
+        if (cause instanceof CredflareError && cause.status === 409 && options.onClosed) return options.onClosed();
         if (cause instanceof CredflareError && cause.status === 422) {
           submitKey = crypto.randomUUID();
           return render(...rejectionView(rejectionScreen(cause, {requester: info.requester, location: settings}), () => void locate(), 'location'));
@@ -483,6 +487,8 @@ function countryOptions(): Array<[string, string]> {
 export interface QuestionsOptions {
   onSubmitted: (fields: Answers) => void;
   earlier?: Answers;
+  onUnsupported?: (answers: Answers) => void;
+  onClosed?: () => void;
 }
 
 export function mountQuestions(element: HTMLElement, session: CredflareSession, info: SessionInfo, options: QuestionsOptions): () => void {
@@ -492,14 +498,13 @@ export function mountQuestions(element: HTMLElement, session: CredflareSession, 
   const verifier = verifierName(info);
   const abort = new AbortController();
   const earlier = earlierAnswers(info, options.earlier);
-  const answers: Answers = {};
-  for (const question of schema) if (hasAnswer(earlier, question.key)) answers[question.key] = earlier[question.key];
+  const answers: Answers = startingAnswers(schema, earlier);
   let disposed = false, submitKey = crypto.randomUUID(), shownErrors: Record<string, string> = {}, sending = false;
   const errorFor = (key: string) => (hasAnswer(shownErrors, key) ? shownErrors[key] : undefined);
   const form = node('form');
   form.noValidate = true;
-  const fields = node('div');
-  fields.style.cssText = `display:flex;flex-direction:column;gap:${tokens.spacing.xl}px`;
+  const fields = node('fieldset');
+  fields.style.cssText = `display:flex;flex-direction:column;gap:${tokens.spacing.xl}px;border:0;margin:0;padding:0;min-width:0`;
   const status = node('p', 'cf-small', '');
   status.setAttribute('role', 'status');
   const send = button(say('questions.send'));
@@ -623,9 +628,14 @@ export function mountQuestions(element: HTMLElement, session: CredflareSession, 
     if (disposed) return;
     const focused = document.activeElement?.id;
     const shown = visibleQuestions(schema, answers, earlier);
+    if (!shown.every(isSupportedQuestion)) {
+      if (options.onUnsupported) return options.onUnsupported({...answers});
+      disposed = true; abort.abort();
+      mountReceipt(element, info, {hostSteps: true});
+      return;
+    }
     const children: Node[] = [];
     for (const question of shown) {
-      if (!isSupportedQuestion(question)) continue;
       const id = controls.get(question.key)?.id ?? fieldId(question.key);
       const error = errorFor(question.key);
       const grouped = question.type === 'multi_select' || question.type === 'founders';
@@ -655,14 +665,15 @@ export function mountQuestions(element: HTMLElement, session: CredflareSession, 
     draw();
     const first = Object.keys(problems)[0];
     if (first) { controls.get(first)?.querySelector?.('input')?.focus(); controls.get(first)?.focus(); return; }
-    sending = true; send.disabled = true; status.textContent = say('questions.sending');
+    sending = true; send.disabled = fields.disabled = true; status.textContent = say('questions.sending');
     try {
       const fields = answersPayload(schema, answers, earlier);
       await session.submitAnswers(fields, submitKey, abort.signal);
       if (!disposed) options.onSubmitted(fields);
     } catch (cause) {
       if (disposed) return;
-      sending = false; send.disabled = false; status.textContent = '';
+      sending = false; send.disabled = fields.disabled = false; status.textContent = '';
+      if (cause instanceof CredflareError && cause.status === 409 && options.onClosed) return options.onClosed();
       if (cause instanceof CredflareError && cause.status === 422) {
         submitKey = crypto.randomUUID();
         const errors = cause.errors && typeof cause.errors === 'object' && !Array.isArray(cause.errors) ? cause.errors as Record<string, unknown> : {};
@@ -685,11 +696,23 @@ export interface ContactCodeOptions {
   channel: CodeChannel;
   onSubmitted: () => void;
   onLeave?: (code: string | null) => void;
+  onHostActionRequired?: (details: HostActionDetails) => void;
+  onClosed?: () => void;
 }
 
 interface PendingCode {
   destination: string;
+  typed: string;
   sends_remaining: number | null;
+}
+
+export interface HostActionDetails {
+  code: string | null;
+}
+
+function hostAction(element: HTMLElement, code: string | null, handler?: (details: HostActionDetails) => void): void {
+  handler?.({code});
+  element.dispatchEvent(new CustomEvent<HostActionDetails>('credflare:host-action-required', {bubbles: true, detail: {code}}));
 }
 
 export function mountContactCode(element: HTMLElement, session: CredflareSession, info: SessionInfo, options: ContactCodeOptions): () => void {
@@ -749,7 +772,7 @@ export function mountContactCode(element: HTMLElement, session: CredflareSession
     try {
       const sent: CodeRequest = await session.requestCode(channel, typed(), abort.signal);
       if (disposed || mine !== turn) return;
-      last = {destination: sent.destination, sends_remaining: sent.sends_remaining};
+      last = {destination: sent.destination, typed: destination, sends_remaining: sent.sends_remaining};
       resendAt = sent.resend_available_at;
       code();
     } catch (cause) {
@@ -757,7 +780,7 @@ export function mountContactCode(element: HTMLElement, session: CredflareSession
     }
   }
 
-  function code(error?: string) {
+  function code(error?: string, note?: string) {
     if (!last) return enter();
     const pending = last;
     const id = fieldId('code');
@@ -778,7 +801,7 @@ export function mountContactCode(element: HTMLElement, session: CredflareSession
     const form = node('form');
     form.noValidate = true;
     form.style.cssText = `display:flex;flex-direction:column;gap:${tokens.spacing.gap}px`;
-    form.append(field, ...(error ? [notice(error)] : []), confirm);
+    form.append(field, ...(error ? [notice(error)] : []), ...(note ? [node('p', 'cf-small', note)] : []), confirm);
     const countdown = node('p', 'cf-small', '');
     countdown.setAttribute('aria-live', 'polite');
     const resend = button(say('contact_code.resend'), true);
@@ -819,9 +842,11 @@ export function mountContactCode(element: HTMLElement, session: CredflareSession
     if (options.onLeave) return options.onLeave(code);
     disposed = true; abort.abort();
     mountReceipt(element, info, {hostSteps: true});
+    hostAction(element, code, options.onHostActionRequired);
   }
 
   function failed(cause: unknown, from: 'enter' | 'code', fallback: CopyKey) {
+    if (cause instanceof CredflareError && cause.status === 409 && options.onClosed) return options.onClosed();
     if (!(cause instanceof CredflareError) || cause.status !== 422) {
       const message = cause instanceof CredflareError && cause.status !== 0 ? livenessErrorMessage(cause) : say(fallback);
       return from === 'code' && last ? code(message) : enter(message);
@@ -836,11 +861,14 @@ export function mountContactCode(element: HTMLElement, session: CredflareSession
       wait: () => {
         const after = typeof cause.details.resend_available_at === 'string' ? cause.details.resend_available_at : null;
         resendAt = after ?? resendAt ?? new Date(Date.now() + rules.resend_seconds * 1000).toISOString();
-        if (!last || from === 'enter') last = {destination, sends_remaining: null};
-        code();
+        const elsewhere = !!last && last.typed !== destination;
+        if (last) destination = last.typed;
+        else last = {destination, typed: destination, sends_remaining: null};
+        code(screen.message, elsewhere ? say(channel === 'email' ? 'email.change_after' : 'phone.change_after') : undefined);
       },
       leave: () => leave(screen.code),
     };
+    if (screen.action === 'wait') return actions.wait();
     render(...rejectionView(screen, actions[screen.action]));
   }
 
@@ -939,7 +967,9 @@ export interface RemainingStepsOptions {
   onDocuments?: (info: SessionInfo) => void;
   onDone?: () => void;
   onLeave?: (code: string | null) => void;
+  onHostActionRequired?: (details: HostActionDetails) => void;
   handoff?: boolean;
+  info?: SessionInfo;
 }
 
 export function mountRemainingSteps(element: HTMLElement, session: CredflareSession, options: RemainingStepsOptions = {}): () => void {
@@ -948,6 +978,13 @@ export function mountRemainingSteps(element: HTMLElement, session: CredflareSess
   const status = node('p', 'cf-body', say('intro.checking'));
   status.setAttribute('role', 'status');
   const answered: Answers = {};
+  let unsent: Answers = {};
+  const closed = () => void advance(null);
+  const hostReceipt = (target: HTMLElement, info: SessionInfo, code: string | null) => {
+    dispose?.();
+    dispose = mountReceipt(target, info, {received, hostSteps: true, onDone: options.onDone});
+    hostAction(element, code, options.onHostActionRequired);
+  };
   const submitted = (step: FlowStep) => () => {
     const key = receiptKey(step);
     if (key) received.push(say(key));
@@ -976,7 +1013,7 @@ export function mountRemainingSteps(element: HTMLElement, session: CredflareSess
       return;
     }
     if (disposed) return;
-    const step = nextStep(info, earlierAnswers(info, answered));
+    const step = nextStep(info, earlierAnswers(info, {...answered, ...unsent}));
     if (step === 'documents') return options.onDocuments?.(info);
     if (options.handoff && step !== 'done' && step !== 'host') {
       const inner = node('div');
@@ -992,24 +1029,30 @@ export function mountRemainingSteps(element: HTMLElement, session: CredflareSess
   };
   const mountStep = (target: HTMLElement, step: FlowStep, info: SessionInfo) => {
     if (step === 'questions') {
-      dispose = mountQuestions(target, session, info, {earlier: answered, onSubmitted: fields => { Object.assign(answered, fields); submitted(step)(); }});
+      dispose = mountQuestions(target, session, info, {
+        earlier: answered,
+        onSubmitted: fields => { Object.assign(answered, fields); unsent = {}; submitted(step)(); },
+        onUnsupported: answers => { unsent = answers; queueMicrotask(() => void advance(info)); },
+        onClosed: closed,
+      });
       return;
     }
     if (step === 'facial_verification') {
-      dispose = mountLiveness(target, session, info, {provider: options.provider, onSubmitted: submitted(step)});
+      dispose = mountLiveness(target, session, info, {provider: options.provider, onSubmitted: submitted(step), onClosed: closed});
       return;
     }
     if (step === 'location_verification') {
-      dispose = mountLocation(target, session, info, {geolocation: options.geolocation, onSubmitted: submitted(step)});
+      dispose = mountLocation(target, session, info, {geolocation: options.geolocation, onSubmitted: submitted(step), onClosed: closed});
       return;
     }
     if (step === 'email_verification' || step === 'phone_verification') {
-      const onLeave = options.onLeave ?? (() => { dispose?.(); dispose = mountReceipt(target, info, {received, hostSteps: true, onDone: options.onDone}); });
-      dispose = mountContactCode(target, session, info, {channel: step === 'email_verification' ? 'email' : 'phone', onSubmitted: submitted(step), onLeave});
+      const onLeave = (code: string | null) => { if (options.onLeave) options.onLeave(code); else hostReceipt(target, info, code); };
+      dispose = mountContactCode(target, session, info, {channel: step === 'email_verification' ? 'email' : 'phone', onSubmitted: submitted(step), onLeave, onClosed: closed});
       return;
     }
-    dispose = mountReceipt(target, info, {received, hostSteps: step === 'host', onDone: options.onDone});
+    if (step === 'host') return hostReceipt(target, info, null);
+    dispose = mountReceipt(target, info, {received, onDone: options.onDone});
   };
-  void advance();
+  void advance(options.info);
   return () => { disposed = true; dispose?.(); element.replaceChildren(); };
 }

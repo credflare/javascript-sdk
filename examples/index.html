@@ -4,7 +4,7 @@
 <style>:root{color-scheme:light dark;--paper:#fff;--ink:#18233c;--muted:#52617a;--primary:#20315f;--button:#fff;--border:#cad4e5;--radius:14px}@media(prefers-color-scheme:dark){:root{--paper:#111c31;--ink:#f4f7fe;--muted:#b7c4da;--primary:#b9cdff;--button:#16294e;--border:#566983}}*{box-sizing:border-box}body{font:18px/1.5 system-ui;background:var(--paper);color:var(--ink);max-width:680px;margin:32px auto;padding:24px;text-align:center}header{font-size:15px;font-weight:600;min-height:24px}footer{margin-top:40px;font-size:12px;color:var(--muted)}h1{font-size:32px;line-height:1.2}p{color:var(--muted)}input,button,select{font:inherit;padding:14px;width:100%;border:1px solid var(--border);border-radius:var(--radius);margin:8px 0 20px;text-align:center}button{background:var(--primary);color:var(--button);min-height:56px;cursor:pointer}button:disabled{opacity:.5;cursor:wait}label{display:block}img{display:block;max-width:100%;max-height:240px;object-fit:contain;border-radius:var(--radius);margin:0 auto}fieldset{border:1px solid var(--border);border-radius:var(--radius);margin-bottom:24px;padding:20px}legend{margin:0 auto}.doc{display:flex;align-items:center;justify-content:center;gap:12px}.doc svg{width:24px;height:24px}[hidden]{display:none!important}</style>
 <header id="verifier"></header><main><h1 id="title">Verify your identity</h1><p id="intro">Follow the steps requested by your verifier. Review each item before you send it.</p>
 <form id="start"><label>Email <input name="email" type="email" required autocomplete="email"></label><button>Start</button></form>
-<p id="status" role="status" aria-live="polite"></p><section id="capture"></section></main><footer><img src="/credflare-mark.png" alt="" style="width:14px;height:14px;display:inline-block;vertical-align:middle;margin-right:6px;background:white;padding:2px;box-sizing:content-box;border-radius:3px">Secured by Credflare</footer>
+<p id="status" role="status" aria-live="polite"></p><p id="host-action" data-code="" hidden></p><section id="capture"></section></main><footer><img src="/credflare-mark.png" alt="" style="width:14px;height:14px;display:inline-block;vertical-align:middle;margin-right:6px;background:white;padding:2px;box-sizing:content-box;border-radius:3px">Secured by Credflare</footer>
 <script type="module">
 import {mountReceipt, mountRemainingSteps} from '/dist/browser.js';
 import {createMediaPipeProvider} from '/dist/mediapipe.js';
@@ -15,7 +15,10 @@ const provider=createMediaPipeProvider({wasmBaseUrl:'/vendor/mediapipe/wasm',mod
 let session,info,dispose,received=[];
 function remaining(){
  dispose?.();capture.replaceChildren();status.textContent='';document.querySelector('#title').hidden=true;document.querySelector('#intro').hidden=true;
- dispose=mountRemainingSteps(capture,session,{provider,received,handoff:true,onDocuments:next=>{info=next;showDocuments();},onDone:()=>{status.textContent=text('receipt.body',{verifier:verifierName(info)});}});
+ dispose=mountRemainingSteps(capture,session,{provider,received,info,handoff:true,onHostActionRequired:showHostAction,onDocuments:next=>{info=next;showDocuments();},onDone:()=>{status.textContent=text('receipt.body',{verifier:verifierName(info)});}});
+}
+function showHostAction({code}){
+ const line=document.querySelector('#host-action');line.dataset.code=code??'';line.textContent=code?`The app continues from here with the reason ${code}.`:'The app continues from here with the remaining steps.';line.hidden=false;
 }
 async function refresh(){
  info=await session.get();document.querySelector('#verifier').textContent=info.requester?.name??'';

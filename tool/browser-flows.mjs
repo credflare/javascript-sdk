@@ -100,9 +100,8 @@ try {
     submitForm();
     return true;
   })()`);
-  await until(`app.innerText.includes(say('rejection.code_resend_too_soon.title'))`);
-  await evaluate(`press(say(sdk.rejections.actions.wait.label)), true`);
   await until(`!!app.querySelector('input[autocomplete="one-time-code"]')`);
+  assert.ok((await screen()).includes(await evaluate(`say('rejection.code_resend_too_soon.message')`)));
   const waiting = await screen();
   assert.ok(waiting.includes('+237 650 000 001'), 'the code screen names the number the applicant typed');
   assert.match(waiting, /\b(8\d|90)\b/, 'the resend countdown runs to the rejection resend_available_at');
@@ -112,7 +111,9 @@ try {
   await fresh();
   await evaluate(`(() => {
     routes['POST /phone-codes'] = () => reply(422, fx['rejections/phone.not_configured']);
-    browser.mountContactCode(app, session, fx['requirement-added-session'].data, {channel: 'phone', onSubmitted() {}});
+    window.handed = [];
+    app.addEventListener('credflare:host-action-required', event => handed.push(event.detail.code));
+    browser.mountContactCode(app, session, fx['requirement-added-session'].data, {channel: 'phone', onSubmitted() {}, onHostActionRequired: ({code}) => handed.push('callback:' + code)});
     type(app.querySelector('input'), '+237650000001');
     submitForm();
     return true;
@@ -120,7 +121,75 @@ try {
   await until(`app.innerText.includes(say('rejection.phone_not_configured.title'))`);
   await evaluate(`press(say(sdk.rejections.actions.leave.label)), true`);
   await until(`app.innerText.includes(say('receipt.host_steps'))`);
-  console.log('PASS a leave rejection always offers Leave and ends on host steps without a host handler');
+  assert.deepEqual(await evaluate('handed'), ['callback:phone.not_configured', 'phone.not_configured'], 'the host receives the rejection code');
+  console.log('PASS a leave rejection hands its code to the host by callback and event');
+
+  await fresh();
+  await evaluate(`(() => {
+    let sends = 0;
+    const rejection = structuredClone(fx['rejections/phone.resend_too_soon']);
+    rejection.resend_available_at = new Date(Date.now() + 45000).toISOString();
+    const sent = structuredClone(fx['phone-code-request']);
+    sent.data.resend_available_at = rejection.resend_available_at;
+    routes['POST /phone-codes'] = () => ++sends === 1 ? reply(202, sent) : reply(422, rejection);
+    browser.mountContactCode(app, session, fx['requirement-added-session'].data, {channel: 'phone', onSubmitted() {}});
+    type(app.querySelector('input'), '+237650000001');
+    submitForm();
+    return true;
+  })()`);
+  await until(`!!app.querySelector('input[autocomplete="one-time-code"]')`);
+  await evaluate(`press(say('phone.change')), true`);
+  await evaluate(`(() => { type(app.querySelector('input'), '+237650000002'); submitForm(); return true; })()`);
+  await until(`calls.filter(c => c.key === 'POST /phone-codes').length === 2 && !!app.querySelector('input[autocomplete="one-time-code"]')`);
+  const kept = await screen();
+  assert.ok(kept.includes(await evaluate(`fx['phone-code-request'].data.destination`)), 'the code entry still names the destination that has a code');
+  assert.ok(kept.includes(await evaluate(`say('phone.change_after')`)), 'a note says a new number can be used after the countdown');
+  assert.ok(!kept.includes('+237650000002'));
+  console.log('PASS a refused new number during the cooldown keeps the code entry for the number that has a code');
+
+  await fresh();
+  await evaluate(`(() => {
+    routes['POST /submit'] = () => new Promise(() => {});
+    browser.mountQuestions(app, session, fx['questionnaire-earlier-answers-session'].data, {onSubmitted() {}});
+    type(app.querySelector('input'), 'Acme');
+    submitForm();
+    return true;
+  })()`);
+  await until(`calls.some(c => c.key === 'POST /submit')`);
+  assert.equal(await evaluate(`app.querySelector('fieldset').disabled && app.querySelector('input').matches(':disabled')`), true, 'answers are locked while they are sent');
+  console.log('PASS answers are locked while they are sent');
+
+  await fresh();
+  await evaluate(`(() => {
+    routes['GET /'] = () => reply(200, fx['questionnaire-earlier-answers-session']);
+    routes['POST /submit'] = () => reply(409, fx['session-closed']);
+    browser.mountRemainingSteps(app, session);
+    return true;
+  })()`);
+  await until(`!!app.querySelector('form input')`);
+  await evaluate(`(() => { type(app.querySelector('form input'), 'Acme'); submitForm(); return true; })()`);
+  await until(`app.innerText.includes(say('receipt.title'))`);
+  assert.ok(!(await screen()).includes(await evaluate(`say('receipt.answers')`)));
+  assert.equal(await evaluate(`calls.filter(c => c.key === 'GET /').length`), 1);
+  console.log('PASS a closed case refusing the answers ends on the receipt');
+
+  await fresh();
+  await evaluate(`(() => {
+    const info = structuredClone(fx['questionnaire-session']);
+    const employer = info.data.profile.form_schema.find(q => q.key === 'employer');
+    info.data.profile.form_schema = [info.data.profile.form_schema.find(q => q.key === 'employment'), {...employer, type: 'signature'}];
+    info.data.profile.verification_requirements = [];
+    routes['GET /'] = () => reply(200, info);
+    window.handed = [];
+    browser.mountRemainingSteps(app, session, {onHostActionRequired: ({code}) => handed.push(code)});
+    return true;
+  })()`);
+  await until(`!!app.querySelector('select')`);
+  await evaluate(`(() => { const select = app.querySelector('select'); select.value = 'Employed'; select.dispatchEvent(new Event('change')); return true; })()`);
+  await until(`app.innerText.includes(say('receipt.host_steps'))`);
+  assert.deepEqual(await evaluate('handed'), [null]);
+  assert.equal(await evaluate(`calls.filter(c => c.key === 'POST /submit').length`), 0);
+  console.log('PASS a revealed question the SDK cannot ask hands the form to the host');
 
   await fresh();
   await evaluate(`(() => {
