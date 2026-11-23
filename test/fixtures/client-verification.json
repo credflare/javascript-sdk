@@ -1,0 +1,9 @@
+{
+    "success": true,
+    "message": "Operation successful",
+    "data": {
+        "id": "NLv9S0VgwG7ydMwlBCyPU",
+        "status": "pending",
+        "verification_url": "http://localhost:3020/verify/NLv9S0VgwG7ydMwlBCyPU"
+    }
+}

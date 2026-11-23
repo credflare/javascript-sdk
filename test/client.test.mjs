@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { once } from 'node:events';
-import { CredflareSession, CredflareError } from '../dist/index.js';
+import { CredflareSession, CredflareError, refreshFailureOutcome } from '../dist/index.js';
 let server, base;
 const calls = [];
 before(async () => {
@@ -20,6 +20,12 @@ before(async () => {
       return res.end(await readFile(new URL(`./fixtures/rejections/${rejection}.json`, import.meta.url)));
     }
     const fixture = req.headers.authorization === 'Bearer wrong' ? 'unauthorized'
+      : req.headers.authorization === 'Bearer closed' && req.method === 'GET' ? 'session-closed'
+      : req.url.endsWith('/handoff') ? 'handoff'
+      : /\/(email|phone)-codes\/confirm$/.test(req.url) ? 'email-code-confirm'
+      : req.url.endsWith('/email-codes') ? 'email-code-request'
+      : req.url.endsWith('/phone-codes') ? 'phone-code-request'
+      : req.headers.authorization === 'Bearer hidden-answer' && submitted === 'form_submission' ? 'questionnaire-hidden-answer'
       : req.headers.authorization === 'Bearer reject-location' && submitted === 'location_verification' ? 'location-rejection'
       : req.url.endsWith('/liveness-challenges') ? 'liveness-challenge'
       : submitted === 'facial_verification' ? 'facial-submission'
@@ -27,7 +33,7 @@ before(async () => {
       : req.url.endsWith('/submit') ? 'submission'
       : req.url.endsWith('/uploads/biometrics') ? ({gesture: 'gesture-upload', liveness_video: 'video-upload', selfie: 'selfie-upload'}[subtype] ?? 'facial-upload')
       : req.url.endsWith('/uploads/documents') ? 'upload' : 'session';
-    res.writeHead(fixture === 'unauthorized' ? 401 : fixture === 'location-rejection' ? 422 : fixture === 'session' ? 200 : 201, { 'Content-Type': 'application/json' });
+    res.writeHead(fixture === 'unauthorized' ? 401 : fixture === 'session-closed' ? 409 : ['location-rejection', 'questionnaire-hidden-answer'].includes(fixture) ? 422 : fixture.endsWith('-code-request') ? 202 : fixture === 'session' ? 200 : 201, { 'Content-Type': 'application/json' });
     res.end(await readFile(new URL(`./fixtures/${fixture}.json`, import.meta.url)));
   }).listen(0, '127.0.0.1');
   await once(server, 'listening');
@@ -187,11 +193,12 @@ test('surfaces a location rejection as a validation error with the server reason
 });
 
 
-test('every real backend rejection maps through the response path to its code and copy', async () => {
-  const {challengeRejected, errorCodes, livenessErrorMessage, locationRejection, locationSubmission, text} = await import('../dist/index.js');
+test('every real backend rejection maps through the response path to its code and spec rejection screen', async () => {
+  const {errorCodes, locationRejection, locationSubmission, rejections, rejectionScreen, text} = await import('../dist/index.js');
   const {readdir} = await import('node:fs/promises');
   const names = (await readdir(new URL('./fixtures/rejections/', import.meta.url))).map(name => name.replace(/\.json$/, '')).sort();
   assert.deepEqual(names, Object.keys(errorCodes).sort());
+  assert.deepEqual(Object.keys(rejections.codes).sort(), names);
   const settings = {max_accuracy_m: 50, max_age_s: 60, mock_location: 'reject', ip_country: 'flag', reference: {rule: 'within', match: 'any', places: [{label: 'Head office'}]}};
   const expected = {
     'location.accuracy': text('location.place.not_precise'),
@@ -200,27 +207,124 @@ test('every real backend rejection maps through the response path to its code an
     'location.ip_country': text('location.ip_country_mismatch'),
     'location.reference_not_matched': 'You do not seem to be at Head office yet. Move closer, then try again.',
   };
-  const restart = ['liveness.challenge_expired', 'liveness.challenge_invalid', 'liveness.challenge_used', 'liveness.frame_out_of_window'];
+  const requester = {name: 'Acme Bank', logo_url: null};
   const {type, ...fix} = locationSubmission({latitude: 4, longitude: 9, accuracy: 10, altitude: null, fixTime: Date.now(), isMock: false, provider: 'gps'});
   for (const code of names) {
     const body = JSON.parse(await readFile(new URL(`./fixtures/rejections/${code}.json`, import.meta.url)));
     const key = crypto.randomUUID();
-    const error = await (code.startsWith('location.')
-      ? session(`reject:${code}`).submitLocation(fix, key)
-      : session(`reject:${code}`).submitFacial({challenge_id: challengeFixture.challenge_id, image_file_id: 4, gesture_file_ids: [3, 3, 3], video_file_id: 5, metadata: {}}, key)).catch(cause => cause);
-    assert.equal(calls.at(-1).headers['x-idempotency-key'], key);
+    const client = session(`reject:${code}`);
+    const channel = code.split('.')[0];
+    const request = code.startsWith('location.') ? client.submitLocation(fix, key)
+      : code.startsWith('liveness.') ? client.submitFacial({challenge_id: challengeFixture.challenge_id, image_file_id: 4, gesture_file_ids: [3, 3, 3], video_file_id: 5, metadata: {}}, key)
+      : /code_(invalid|expired|missing)|too_many_attempts/.test(code) ? client.confirmCode(channel, '123456')
+      : client.requestCode(channel, channel === 'email' ? 'jane@example.test' : '+237650000001');
+    const error = await request.catch(cause => cause);
+    if (code.startsWith('location.') || code.startsWith('liveness.')) assert.equal(calls.at(-1).headers['x-idempotency-key'], key);
     assert.ok(error instanceof CredflareError, code);
     assert.equal(error.code, code);
     assert.equal(error.message, body.message);
-    if (code.startsWith('location.')) assert.equal(locationRejection(error.code, settings), expected[code], code);
-    else {
-      assert.equal(challengeRejected(error), restart.includes(code), code);
-      const copy = challengeRejected(error) ? text('liveness.expired') : livenessErrorMessage(error);
-      assert.equal(copy, restart.includes(code) ? text('liveness.expired') : body.message, code);
-    }
+    const spec = rejections.codes[code];
+    const screen = rejectionScreen(error, {requester, location: code.startsWith('location.') ? settings : null});
+    assert.equal(screen.code, code);
+    assert.equal(screen.title, text(spec.title));
+    assert.equal(screen.action, spec.action);
+    assert.equal(screen.actionLabel, text(rejections.actions[spec.action].label));
+    assert.equal(screen.requestedBy, 'Requested by Acme Bank.');
+    assert.equal(screen.help, 'If you need help, contact Acme Bank.');
+    if (code.startsWith('location.')) {
+      assert.equal(screen.message, expected[code], code);
+      assert.equal(locationRejection(error.code, settings), expected[code], code);
+    } else assert.equal(screen.message, text(spec.message, {verifier: 'Acme Bank'}), code);
   }
   assert.equal(locationRejection('location.accuracy', {...settings, reference: null}), text('location.low_accuracy'));
   assert.equal(locationRejection('location.reference_not_matched', {...settings, reference: {rule: 'outside', match: 'any', places: [{label: 'Depot'}]}}), 'You seem to be too close to Depot. Move away, then try again.');
   assert.equal(new CredflareError('Rejected.', 422, [], 'future.code').code, 'future.code');
   assert.equal(type, 'location_verification');
+});
+
+test('a rejection without a known code shows the server message with a retry and the requester fallback', async () => {
+  const {rejectionScreen, text} = await import('../dist/index.js');
+  for (const error of [new CredflareError('Something new happened.', 422, [], 'future.code'), new CredflareError('The email field is required.', 422, {email: ['The email field is required.']})]) {
+    const screen = rejectionScreen(error, {requester: null});
+    assert.equal(screen.code, null);
+    assert.equal(screen.title, null);
+    assert.equal(screen.message, error.message);
+    assert.equal(screen.action, 'retry');
+    assert.equal(screen.actionLabel, text('rejection.action.retry'));
+    assert.equal(screen.requestedBy, `Requested by ${text('common.verifier_fallback')}.`);
+  }
+  const notConfigured = rejectionScreen(new CredflareError('x', 422, [], 'phone.not_configured'), {requester: {name: '  '}});
+  assert.equal(notConfigured.message, 'Confirming a phone number is not available for this request yet. Contact your verifier.');
+  assert.equal(notConfigured.action, 'leave');
+});
+
+test('requests and confirms contact codes with the real 202 and 201 bodies and no request key', async () => {
+  const email = await session().requestCode('email', 'Jane.Doe@example.test');
+  const sent = calls.at(-1);
+  assert.match(sent.url, /\/sdk\/sessions\/00000000-0000-4000-8000-000000000001\/email-codes$/);
+  assert.deepEqual(JSON.parse(sent.body), {email: 'Jane.Doe@example.test'});
+  assert.equal(sent.headers['content-type'], 'application/json');
+  assert.equal(sent.headers['x-idempotency-key'], undefined);
+  assert.deepEqual(email, JSON.parse(await readFile(new URL('./fixtures/email-code-request.json', import.meta.url))).data);
+  const phone = await session().requestCode('phone', '+237650000001');
+  assert.deepEqual(JSON.parse(calls.at(-1).body), {phone: '+237650000001'});
+  assert.equal(phone.destination, '+237*******01');
+  assert.equal(phone.sends_remaining, 4);
+  const confirmed = await session().confirmCode('email', '123456');
+  assert.match(calls.at(-1).url, /\/email-codes\/confirm$/);
+  assert.deepEqual(JSON.parse(calls.at(-1).body), {code: '123456'});
+  assert.equal(confirmed.verified, true);
+  assert.equal(confirmed.id, 1);
+});
+
+test('a resend too soon rejection keeps its resend time and waiting code on the error', async () => {
+  const {rejectionScreen} = await import('../dist/index.js');
+  const body = JSON.parse(await readFile(new URL('./fixtures/rejections/email.resend_too_soon.json', import.meta.url)));
+  const error = await session('reject:email.resend_too_soon').requestCode('email', 'jane@example.test').catch(cause => cause);
+  assert.equal(error.code, 'email.resend_too_soon');
+  assert.deepEqual(error.details, {resend_available_at: body.resend_available_at, destination: body.destination, expires_at: body.expires_at, sends_remaining: body.sends_remaining});
+  assert.equal(rejectionScreen(error).action, 'wait');
+});
+
+test('the help line names the help email, else the help link, else the requester', async () => {
+  const {rejectionScreen, text} = await import('../dist/index.js');
+  const info = JSON.parse(await readFile(new URL('./fixtures/help-contact-session.json', import.meta.url))).data;
+  const error = new CredflareError('x', 422, [], 'phone.code_invalid');
+  const email = rejectionScreen(error, {requester: info.requester});
+  assert.equal(email.help, text('rejection.help_email', {verifier: info.requester.name, help_email: info.requester.help_email}));
+  assert.deepEqual(email.helpLink, {text: 'help@northwind.example', href: 'mailto:help@northwind.example'});
+  const url = rejectionScreen(error, {requester: {...info.requester, help_email: null}});
+  assert.equal(url.help, 'If you need help, visit https://northwind.example/support.');
+  assert.deepEqual(url.helpLink, {text: 'https://northwind.example/support', href: 'https://northwind.example/support'});
+  const plain = rejectionScreen(error, {requester: {...info.requester, help_email: null, help_url: null}});
+  assert.equal(plain.help, "If you need help, contact Ada's Workspace.");
+  assert.equal(plain.helpLink, null);
+  assert.equal(rejectionScreen(error, {requester: null}).help, `If you need help, contact ${text('common.verifier_fallback')}.`);
+});
+
+test('creates a phone handoff link with the real 201 body', async () => {
+  const link = await session().createHandoff();
+  assert.match(calls.at(-1).url, /\/sdk\/sessions\/00000000-0000-4000-8000-000000000001\/handoff$/);
+  assert.equal(calls.at(-1).headers.authorization, 'Bearer test-session-token');
+  assert.deepEqual(link, JSON.parse(await readFile(new URL('./fixtures/handoff.json', import.meta.url))).data);
+});
+
+test('a hidden question answer comes back as a field error from the submit route', async () => {
+  const error = await session('hidden-answer').submitAnswers({employer: 'Acme'}, crypto.randomUUID()).catch(cause => cause);
+  assert.equal(JSON.parse(calls.at(-1).body).type, 'form_submission');
+  assert.equal(error.status, 422);
+  assert.equal(error.code, null);
+  assert.deepEqual(error.errors, {'fields.employer': ['This question is not shown for the answers given.']});
+});
+
+test('a closed case on refresh shows the receipt while other failures ask to try again', async () => {
+  const closed = await session('closed').get().catch(error => error);
+  assert.ok(closed instanceof CredflareError);
+  assert.equal(closed.status, 409);
+  assert.equal(closed.type, 'verification_closed');
+  assert.equal(closed.code, null);
+  assert.equal(refreshFailureOutcome(closed), 'receipt');
+  const unauthorized = await session('wrong').get().catch(error => error);
+  assert.equal(refreshFailureOutcome(unauthorized), 'refresh_failed');
+  assert.equal(refreshFailureOutcome(new TypeError('fetch failed')), 'refresh_failed');
 });

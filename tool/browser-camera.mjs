@@ -220,7 +220,10 @@ try {
   await click('Send location');
   if (!live) {
     await until(`document.querySelector('.cf-notice')?.textContent.includes('Your location is not precise enough to check this place.')`);
+    assert.ok((await texts()).includes('Location not precise enough'));
     await screenshot('08-location-rejected');
+    await click('Try again');
+    await until(`[...document.querySelectorAll('button')].some(b => b.textContent === 'Send location')`, 30000);
     await click('Send location');
   }
   await until(`[...document.querySelectorAll('h2')].some(h => h.textContent === 'Evidence received')`, 30000);

@@ -2,6 +2,8 @@ import {location as locationSpec} from './spec.generated.js';
 import type {CopyKey} from './spec.generated.js';
 import {text} from './copy.js';
 import type {LocationSettings} from './settings.js';
+import {CredflareError} from './index.js';
+import {rejectionCopy, rejectionScreen} from './rejections.js';
 
 export type LocationProvider = 'gps' | 'network' | 'fused' | 'browser';
 export interface LocationFix {
@@ -100,18 +102,6 @@ export function locationCopy(settings: LocationSettings | null, verifier: string
 }
 
 export function locationRejection(code: string | null, settings: LocationSettings | null): string | null {
-  const reference = settings?.reference;
-  const placed = !!reference?.places.length;
-  switch (code) {
-    case 'location.reference_not_matched':
-      if (!placed) return null;
-      return text(reference!.rule === 'outside' ? 'location.place.not_matched_outside' : 'location.place.not_matched_within', {
-        place: joinLabels(reference!.places.map(place => place.label)),
-      });
-    case 'location.accuracy': return text(placed ? 'location.place.not_precise' : 'location.low_accuracy');
-    case 'location.stale': return text('location.stale');
-    case 'location.mock': return text('location.mock_detected');
-    case 'location.ip_country': return text('location.ip_country_mismatch');
-    default: return null;
-  }
+  if (!code?.startsWith('location.') || !rejectionCopy(code)) return null;
+  return rejectionScreen(new CredflareError('', 422, [], code), {location: settings}).message;
 }

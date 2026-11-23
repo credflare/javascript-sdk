@@ -1,25 +1,28 @@
 <!doctype html>
 <html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Identity verification</title>
 <script type="importmap">{"imports":{"@mediapipe/tasks-vision":"/vendor/mediapipe/vision_bundle.mjs"}}</script>
-<style>:root{color-scheme:light dark;--paper:#fff;--ink:#18233c;--muted:#52617a;--primary:#20315f;--button:#fff;--border:#cad4e5;--radius:14px}@media(prefers-color-scheme:dark){:root{--paper:#111c31;--ink:#f4f7fe;--muted:#b7c4da;--primary:#b9cdff;--button:#16294e;--border:#566983}}*{box-sizing:border-box}body{font:18px/1.5 system-ui;background:var(--paper);color:var(--ink);max-width:680px;margin:32px auto;padding:24px;text-align:center}header{font-size:15px;font-weight:600;min-height:24px}footer{margin-top:40px;font-size:12px;color:var(--muted)}h1{font-size:32px;line-height:1.2}p{color:var(--muted)}input,button,select{font:inherit;padding:14px;width:100%;border:1px solid var(--border);border-radius:var(--radius);margin:8px 0 20px;text-align:center}button{background:var(--primary);color:var(--button);min-height:56px;cursor:pointer}button:disabled{opacity:.5;cursor:wait}label{display:block}img{display:block;max-width:100%;max-height:240px;object-fit:contain;border-radius:var(--radius);margin:0 auto}fieldset{border:1px solid var(--border);border-radius:var(--radius);margin-bottom:24px;padding:20px}legend{margin:0 auto}.doc{display:flex;align-items:center;justify-content:center;gap:12px}.doc svg{width:24px;height:24px}[hidden]{display:none!important}</style>
+<style>:root{color-scheme:light dark;--paper:#fff;--ink:#18233c;--muted:#52617a;--primary:#20315f;--button:#fff;--border:#cad4e5;--radius:14px}@media(prefers-color-scheme:dark){:root{--paper:#111c31;--ink:#f4f7fe;--muted:#b7c4da;--primary:#b9cdff;--button:#16294e;--border:#566983}}*{box-sizing:border-box}body{font:18px/1.5 system-ui;background:var(--paper);color:var(--ink);max-width:680px;margin:32px auto;padding:24px;text-align:center}header{font-size:15px;font-weight:600;min-height:24px}footer{margin-top:40px;font-size:12px;color:var(--muted)}h1{font-size:32px;line-height:1.2}p{color:var(--muted)}input,button,select{font:inherit;padding:14px;width:100%;border:1px solid var(--border);border-radius:var(--radius);margin:8px 0 20px;text-align:center}button{background:var(--primary);color:var(--button);min-height:56px;cursor:pointer}button:disabled{opacity:.5;cursor:wait}label{display:block}img{display:block;max-width:100%;max-height:240px;object-fit:contain;border-radius:var(--radius);margin:0 auto}fieldset{border:1px solid var(--border);border-radius:var(--radius);margin-bottom:24px;padding:20px}legend{margin:0 auto}.doc{display:flex;align-items:center;justify-content:center;gap:12px}.doc svg{width:24px;height:24px}button.secondary{background:transparent;color:var(--primary)}label.file{position:relative;border:1px solid var(--primary);border-radius:var(--radius);padding:14px;margin:8px 0 20px;color:var(--primary);cursor:pointer;min-height:56px}label.file input{position:absolute;width:1px;height:1px;opacity:0}.camera video{width:100%;border-radius:var(--radius);background:#000}.preview p{margin:8px 0}[hidden]{display:none!important}</style>
 <header id="verifier"></header><main><h1 id="title">Verify your identity</h1><p id="intro">Follow the steps requested by your verifier. Review each item before you send it.</p>
 <form id="start"><label>Email <input name="email" type="email" required autocomplete="email"></label><button>Start</button></form>
-<p id="status" role="status" aria-live="polite"></p><section id="capture"></section></main><footer><img src="/credflare-mark.png" alt="" style="width:14px;height:14px;display:inline-block;vertical-align:middle;margin-right:6px;background:white;padding:2px;box-sizing:content-box;border-radius:3px">Secured by Credflare</footer>
+<p id="status" role="status" aria-live="polite"></p><p id="host-action" data-code="" hidden></p><section id="capture"></section></main><footer><img src="/credflare-mark.png" alt="" style="width:14px;height:14px;display:inline-block;vertical-align:middle;margin-right:6px;background:white;padding:2px;box-sizing:content-box;border-radius:3px">Secured by Credflare</footer>
 <script type="module">
-import {mountRemainingSteps} from '/dist/browser.js';
+import {cameraPicker, mountHandoff, mountReceipt, mountRemainingSteps} from '/dist/browser.js';
 import {createMediaPipeProvider} from '/dist/mediapipe.js';
-import {CredflareSession, captureSteps, methodSummary, text, verifierName, iconSvgs, nextStep, documentsNextKey} from '/dist/index.js';
+import {CredflareSession, captureSteps, methodSummary, text, verifierName, iconSvgs, remainingStep, documentsNextKey, refreshFailureOutcome} from '/dist/index.js';
 const status=document.querySelector('#status'),capture=document.querySelector('#capture'),start=document.querySelector('#start');
 const config=await (await fetch('/config.json')).json();
 const provider=createMediaPipeProvider({wasmBaseUrl:'/vendor/mediapipe/wasm',modelAssetPath:config.faceModel});
 let session,info,dispose,received=[];
 function remaining(){
  dispose?.();capture.replaceChildren();status.textContent='';document.querySelector('#title').hidden=true;document.querySelector('#intro').hidden=true;
- dispose=mountRemainingSteps(capture,session,{provider,received,onDocuments:next=>{info=next;showDocuments();},onDone:()=>{status.textContent=text('receipt.body',{verifier:verifierName(info)});}});
+ dispose=mountRemainingSteps(capture,session,{provider,received,info,handoff:true,onHostActionRequired:showHostAction,onDocuments:next=>{info=next;showDocuments();},onDone:()=>{status.textContent=text('receipt.body',{verifier:verifierName(info)});}});
+}
+function showHostAction({code}){
+ const line=document.querySelector('#host-action');line.dataset.code=code??'';line.textContent=code?`The app continues from here with the reason ${code}.`:'The app continues from here with the remaining steps.';line.hidden=false;
 }
 async function refresh(){
  info=await session.get();document.querySelector('#verifier').textContent=info.requester?.name??'';
- if(nextStep(info)!=='documents')return remaining();
+ if(remainingStep(info)!=='documents')return remaining();
  showDocuments();
 }
 function showDocuments(){
@@ -31,25 +34,51 @@ function showDocuments(){
  for(const requirement of info.profile.document_requirements){const button=document.createElement('button');button.className='doc';button.innerHTML=iconSvgs.id_card;const label=document.createElement('span');label.textContent=`${requirement.document_type.name} · ${methodSummary(requirement)}`;button.append(label);button.insertAdjacentHTML('beforeend',iconSvgs.chevron_right);button.onclick=()=>captureDocument(requirement);capture.append(button);}
 }
 function captureDocument(requirement){
- capture.replaceChildren();const title=document.createElement('h2');title.textContent=requirement.document_type.name;capture.append(title);
+ dispose?.();dispose=undefined;capture.replaceChildren();const title=document.createElement('h2');title.textContent=requirement.document_type.name;capture.append(title);
  let steps;try{steps=captureSteps(requirement);}catch(error){status.textContent=error.message;return;}
- const form=document.createElement('form'),selected=new Map();let pending;
+ const form=document.createElement('form'),selected=new Map();let pending,camera;
+ const stopCamera=()=>{camera?.stream.getTracks().forEach(track=>track.stop());camera?.view.remove();if(camera)camera.opener.hidden=false;camera=undefined;};
+ const choose=(step,field,file,source)=>{pending=undefined;if(file.size>info.upload_limits.max_file_size_bytes){status.textContent=text('errors.file_too_large',{size:`${Math.round(info.upload_limits.max_file_size_bytes/1048576)} MB`});return;}if(!info.upload_limits.allowed_file_types.includes(file.name.split('.').pop().toLowerCase())){status.textContent=text('errors.file_type',{types:info.upload_limits.allowed_file_types.join(', ').toUpperCase()});return;}
+  selected.set(step.id,{file,source,side:step.side,key:crypto.randomUUID()});const preview=field.querySelector('.preview');URL.revokeObjectURL(preview.dataset.url??'');preview.replaceChildren();
+  if(file.type.startsWith('image/')){const image=document.createElement('img');image.src=preview.dataset.url=URL.createObjectURL(file);image.alt=text('capture.preview_label',{side:step.label});preview.append(image);}else{const pdf=document.createElement('p');pdf.textContent=text('capture.preview_pdf');preview.append(pdf);}
+  const name=document.createElement('p');name.textContent=file.name;preview.append(name);preview.hidden=false;
+  for(const control of field.querySelectorAll('[data-source]'))control.firstChild.textContent=control.dataset.source===source?text(source==='camera'?'capture.retake_photo':'capture.change_file'):text(control.dataset.source==='camera'?'capture.take_photo':'capture.choose_file');
+  for(const input of field.querySelectorAll('input'))input.value='';status.textContent=text('review.body');};
+ const offerPhone=()=>{const phone=document.createElement('button');phone.type='button';phone.className='phone secondary';phone.textContent=text('handoff.action');phone.onclick=()=>{stopCamera();dispose=mountHandoff(capture,session,{onBack:()=>captureDocument(requirement),onFinished:()=>void afterSubmit()});};return phone;};
+ async function openCamera(step,field,deviceId){
+  stopCamera();status.textContent=text('selfie.starting_camera');let stream;
+  try{stream=await navigator.mediaDevices.getUserMedia({audio:false,video:deviceId?{deviceId:{exact:deviceId}}:{facingMode:'environment',width:{ideal:1920}}});}
+  catch(error){status.textContent=text(error?.name==='NotAllowedError'?'errors.camera_denied_browser':'errors.camera_unavailable');if(step.source==='camera'&&!field.querySelector('.phone'))field.querySelector('.preview').before(offerPhone());return;}
+  const view=document.createElement('div'),video=document.createElement('video');video.muted=video.playsInline=video.autoplay=true;video.srcObject=stream;view.className='camera';const opener=field.querySelector('[data-source=camera]');opener.hidden=true;camera={stream,view,opener};
+  const shutter=document.createElement('button');shutter.type='button';shutter.textContent=text('capture.take_photo');const cancel=document.createElement('button');cancel.type='button';cancel.className='secondary';cancel.textContent=text('common.cancel');cancel.onclick=()=>{stopCamera();status.textContent='';};
+  shutter.onclick=async()=>{const canvas=document.createElement('canvas');canvas.width=video.videoWidth;canvas.height=video.videoHeight;if(!canvas.width){status.textContent=text('errors.camera_no_photo');return;}canvas.getContext('2d').drawImage(video,0,0);const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',0.9));if(!blob){status.textContent=text('errors.camera_no_photo');return;}stopCamera();choose(step,field,new File([blob],`${step.side}.jpg`,{type:'image/jpeg'}),'camera');};
+  const picker=await cameraPicker(stream,id=>void openCamera(step,field,id));view.append(video,...(picker?[picker]:[]),shutter,cancel);field.querySelector('.preview').before(view);status.textContent=text('capture.check_photo');await video.play().catch(()=>undefined);
+ }
  for(const step of steps){
   const field=document.createElement('fieldset'),legend=document.createElement('legend');legend.textContent=`${step.label} · ${step.sourceLabel}`;field.append(legend);
   const sources=step.source==='camera_or_upload'?['camera','upload']:[step.source];
-  const preview=document.createElement('p');
-  for(const source of sources){const label=document.createElement('label');label.textContent=source==='camera'?text('capture.take_photo'):text('capture.choose_file');const input=document.createElement('input');input.type='file';input.accept=source==='camera'?'image/*':info.upload_limits.allowed_file_types.map(ext=>'.'+ext).join(',');if(source==='camera')input.setAttribute('capture','environment');label.append(input);field.append(label);
-   input.onchange=()=>{pending=undefined;const file=input.files[0];if(!file)return;if(file.size>info.upload_limits.max_file_size_bytes){status.textContent=text('errors.file_too_large',{size:`${Math.round(info.upload_limits.max_file_size_bytes/1048576)} MB`});input.value='';return;}if(!info.upload_limits.allowed_file_types.includes(file.name.split('.').pop().toLowerCase())){status.textContent=text('errors.file_type',{types:info.upload_limits.allowed_file_types.join(', ').toUpperCase()});input.value='';return;}for(const other of field.querySelectorAll('input'))if(other!==input)other.value='';selected.set(step.id,{file,source,side:step.side,key:crypto.randomUUID()});preview.textContent=file.name;status.textContent=text('review.body');};
+  const preview=document.createElement('div');preview.className='preview';preview.hidden=true;
+  for(const source of sources){
+   if(source==='camera'){const take=document.createElement('button');take.type='button';take.dataset.source='camera';take.append(text('capture.take_photo'));take.onclick=()=>void openCamera(step,field);field.append(take);continue;}
+   const label=document.createElement('label');label.className='file';label.dataset.source='upload';label.append(text('capture.choose_file'));const input=document.createElement('input');input.type='file';input.accept=info.upload_limits.allowed_file_types.map(ext=>'.'+ext).join(',');label.append(input);field.append(label);
+   input.onchange=()=>{const file=input.files[0];if(file){stopCamera();choose(step,field,file,'upload');}};
   }
   field.append(preview);form.append(field);
  }
  const button=document.createElement('button');button.textContent=text('review.send');form.append(button);capture.append(form);
- form.onsubmit=async event=>{event.preventDefault();if(selected.size!==steps.length){status.textContent=text('capture.check_photo');return;}button.disabled=true;for(const input of form.querySelectorAll('input'))input.disabled=true;
-  try{pending??={images:[...selected.values()],key:crypto.randomUUID()};status.textContent=text('sending.sending');for(const image of pending.images){if(!image.id){const body=new FormData();body.append('file',image.file);body.append('side',image.side);body.append('capture_source',image.source);body.append('document_type_id',String(requirement.document_type.id));image.id=(await session.upload('documents',body,image.key)).id;}}
+ form.onsubmit=async event=>{event.preventDefault();if(selected.size!==steps.length){status.textContent=text('capture.check_photo');return;}stopCamera();const controls=form.querySelectorAll('input,button');for(const control of controls)control.disabled=true;
+  try{pending??={images:steps.map(step=>selected.get(step.id)),key:crypto.randomUUID()};status.textContent=text('sending.sending');for(const image of pending.images){if(!image.id){const body=new FormData();body.append('file',image.file);body.append('side',image.side);body.append('capture_source',image.source);body.append('document_type_id',String(requirement.document_type.id));image.id=(await session.upload('documents',body,image.key)).id;}}
    await session.submit({type:'document_verification',document_type_id:requirement.document_type.id,evidence:pending.images.map(image=>({file_id:image.id,source:image.source,side:image.side}))},pending.key);
-   received.push(text('receipt.document',{document:requirement.document_type.name}));capture.replaceChildren();status.textContent=text('intro.checking');await refresh();
-  }catch(error){status.textContent=error.message;button.disabled=false;for(const input of form.querySelectorAll('input'))input.disabled=false;}
+  }catch(error){if(refreshFailureOutcome(error)==='receipt'){status.textContent='';dispose=mountReceipt(capture,info,{received});return;}status.textContent=error.message;for(const control of controls)control.disabled=false;return;}
+  received.push(text('receipt.document',{document:requirement.document_type.name}));await afterSubmit();
  };
+}
+async function afterSubmit(){
+ dispose?.();dispose=undefined;capture.replaceChildren();status.textContent=text('intro.checking');
+ try{await refresh();}catch(error){
+  if(refreshFailureOutcome(error)==='receipt'){status.textContent='';dispose=mountReceipt(capture,info,{received});return;}
+  status.textContent=text('errors.refresh_failed');const retry=document.createElement('button');retry.textContent=text('common.try_again');retry.onclick=()=>void afterSubmit();capture.replaceChildren(retry);
+ }
 }
 start.onsubmit=async event=>{event.preventDefault();const button=start.querySelector('button');button.disabled=true;status.textContent=text('common.loading');try{const data=Object.fromEntries(new FormData(start));const response=await fetch('/session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});if(!response.ok)throw new Error(text('errors.start_failed'));session=new CredflareSession(await response.json());start.hidden=true;await refresh();}catch(error){status.textContent=error.message;button.disabled=false;}};
 </script></html>
