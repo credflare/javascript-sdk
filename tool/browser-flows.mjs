@@ -343,6 +343,54 @@ try {
   console.log('PASS retrying a location send after a lost response resends the same payload under the same key');
 
   await fresh();
+  await evaluate(`(() => {
+    const sent = structuredClone(fx['phone-code-request']);
+    routes['POST /phone-codes'] = () => reply(202, sent);
+    routes['POST /phone-codes/confirm'] = () => reply(409, fx['session-closed']);
+    browser.mountContactCode(app, session, fx['requirement-added-session'].data, {channel: 'phone', onSubmitted() {}});
+    type(app.querySelector('input'), '+237650000001');
+    submitForm();
+    return true;
+  })()`);
+  await until(`!!app.querySelector('input[autocomplete="one-time-code"]')`);
+  await evaluate(`(() => { type(app.querySelector('input[autocomplete="one-time-code"]'), '123456'); submitForm(); return true; })()`);
+  await until(`calls.some(c => c.key === 'POST /phone-codes/confirm')`);
+  await until(`app.innerText.includes(say('receipt.title')) || !!app.querySelector('input:not(:disabled)')`);
+  assert.ok((await screen()).includes(await evaluate(`say('receipt.title')`)), 'a standalone code step ends on the receipt for a closed case');
+  assert.equal(await evaluate(`app.querySelectorAll('input').length`), 0);
+  console.log('PASS a standalone code step ends on the receipt when the case is closed');
+
+  await fresh();
+  await evaluate(`(() => {
+    routes['POST /submit'] = () => reply(409, fx['session-closed']);
+    browser.mountQuestions(app, session, fx['questionnaire-earlier-answers-session'].data, {onSubmitted() {}});
+    type(app.querySelector('input'), 'Acme');
+    submitForm();
+    return true;
+  })()`);
+  await until(`calls.some(c => c.key === 'POST /submit')`);
+  await until(`app.innerText.includes(say('receipt.title')) || !app.querySelector('fieldset')?.disabled`);
+  assert.ok((await screen()).includes(await evaluate(`say('receipt.title')`)), 'standalone questions end on the receipt for a closed case');
+  assert.equal(await evaluate(`app.querySelectorAll('form').length`), 0);
+  console.log('PASS standalone questions end on the receipt when the case is closed');
+
+  await fresh();
+  await call('Emulation.setGeolocationOverride', {latitude: 4.0511, longitude: 9.7679, accuracy: 12});
+  await evaluate(`(() => {
+    routes['POST /submit'] = () => reply(409, fx['session-closed']);
+    browser.mountLocation(app, session, fx['capture-session'].data, {onSubmitted() {}});
+    press(say('location.share'));
+    return true;
+  })()`);
+  await until(`app.innerText.includes(say('location.found_title'))`);
+  await evaluate(`press(say('location.send')), true`);
+  await until(`calls.some(c => c.key === 'POST /submit')`);
+  await until(`app.innerText.includes(say('receipt.title')) || [...app.querySelectorAll('button')].some(b => b.textContent === say('location.send') && !b.disabled)`);
+  assert.ok((await screen()).includes(await evaluate(`say('receipt.title')`)), 'a standalone location step ends on the receipt for a closed case');
+  await call('Emulation.clearGeolocationOverride');
+  console.log('PASS a standalone location step ends on the receipt when the case is closed');
+
+  await fresh();
   const loops = await evaluate(`(async () => {
     const real = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
     navigator.mediaDevices.getUserMedia = () => real({video: true});

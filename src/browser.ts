@@ -209,6 +209,7 @@ export function mountLiveness(element: HTMLElement, session: CredflareSession, i
     stream?.getTracks().forEach(track => track.stop()); stream = undefined;
   };
   const render = (...children: Node[]) => { if (!disposed) element.replaceChildren(...children); };
+  const closed = () => { if (options.onClosed) return options.onClosed(); disposed = true; abort.abort(); mountReceipt(element, info); };
 
   function intro(error?: string) {
     const start = button(say('liveness.start'));
@@ -369,7 +370,7 @@ export function mountLiveness(element: HTMLElement, session: CredflareSession, i
         if (!disposed) options.onSubmitted();
       } catch (cause) {
         if (disposed) return;
-        if (cause instanceof CredflareError && cause.status === 409 && options.onClosed) { URL.revokeObjectURL(url); stopCamera(); return options.onClosed(); }
+        if (cause instanceof CredflareError && cause.status === 409) { URL.revokeObjectURL(url); stopCamera(); return closed(); }
         if (cause instanceof CredflareError && cause.status === 422) {
           URL.revokeObjectURL(url); evidence = undefined; stopCamera();
           return render(...rejectionView(rejectionScreen(cause, {requester: info.requester}), () => void run(), 'selfie'));
@@ -420,6 +421,7 @@ export function mountLocation(element: HTMLElement, session: CredflareSession, i
   const abort = new AbortController();
   let disposed = false, submitKey = crypto.randomUUID(), payload: {key: string; fix: LocationFix; body: ReturnType<typeof locationSubmission>} | null = null;
   const render = (...children: Node[]) => { if (!disposed) element.replaceChildren(...children); };
+  const closed = () => { if (options.onClosed) return options.onClosed(); disposed = true; abort.abort(); mountReceipt(element, info); };
   const header = () => [icon('location'), node('h2', 'cf-title', copy.title)];
 
   function consent(error?: string) {
@@ -462,7 +464,7 @@ export function mountLocation(element: HTMLElement, session: CredflareSession, i
         if (!disposed) options.onSubmitted();
       } catch (cause) {
         if (disposed) return;
-        if (cause instanceof CredflareError && cause.status === 409 && options.onClosed) return options.onClosed();
+        if (cause instanceof CredflareError && cause.status === 409) return closed();
         if (cause instanceof CredflareError && cause.status === 422) {
           submitKey = crypto.randomUUID();
           return render(...rejectionView(rejectionScreen(cause, {requester: info.requester, location: settings}), () => void locate(), 'location'));
@@ -502,6 +504,7 @@ export function mountQuestions(element: HTMLElement, session: CredflareSession, 
   const answers: Answers = startingAnswers(schema, earlier);
   let disposed = false, submitKey = crypto.randomUUID(), shownErrors: Record<string, string> = {}, sending = false;
   const errorFor = (key: string) => (hasAnswer(shownErrors, key) ? shownErrors[key] : undefined);
+  const closed = () => { if (options.onClosed) return options.onClosed(); disposed = true; abort.abort(); mountReceipt(element, info); };
   const form = node('form');
   form.noValidate = true;
   const fields = node('fieldset');
@@ -673,8 +676,8 @@ export function mountQuestions(element: HTMLElement, session: CredflareSession, 
       if (!disposed) options.onSubmitted(fields);
     } catch (cause) {
       if (disposed) return;
+      if (cause instanceof CredflareError && cause.status === 409) return closed();
       sending = false; send.disabled = fields.disabled = false; status.textContent = '';
-      if (cause instanceof CredflareError && cause.status === 409 && options.onClosed) return options.onClosed();
       if (cause instanceof CredflareError && cause.status === 422) {
         submitKey = crypto.randomUUID();
         const errors = cause.errors && typeof cause.errors === 'object' && !Array.isArray(cause.errors) ? cause.errors as Record<string, unknown> : {};
@@ -729,6 +732,7 @@ export function mountContactCode(element: HTMLElement, session: CredflareSession
   let disposed = false, destination = '', last: PendingCode | null = null, resendAt: string | null = null, timer: ReturnType<typeof setInterval> | undefined, turn = 0;
   const render = (...children: Node[]) => { if (disposed) return; if (timer) clearInterval(timer); timer = undefined; turn++; element.replaceChildren(...children); };
   const header = () => [node('h2', 'cf-title', say(channel === 'email' ? 'email.title' : 'phone.title'))];
+  const closed = () => { if (options.onClosed) return options.onClosed(); disposed = true; abort.abort(); if (timer) clearInterval(timer); timer = undefined; mountReceipt(element, info); };
   const typed = () => (channel === 'phone' ? normalizePhone(destination) : destination);
 
   function enter(error?: string) {
@@ -851,7 +855,7 @@ export function mountContactCode(element: HTMLElement, session: CredflareSession
   }
 
   function failed(cause: unknown, from: 'enter' | 'code', fallback: CopyKey) {
-    if (cause instanceof CredflareError && cause.status === 409 && options.onClosed) return options.onClosed();
+    if (cause instanceof CredflareError && cause.status === 409) return closed();
     if (!(cause instanceof CredflareError) || cause.status !== 422) {
       const message = cause instanceof CredflareError && cause.status !== 0 ? livenessErrorMessage(cause) : say(fallback);
       return from === 'code' && last ? code(message) : enter(message);
