@@ -2,6 +2,7 @@ import type {SessionInfo} from './index.js';
 import type {CopyKey} from './spec.generated.js';
 import {requirements} from './spec.generated.js';
 import {canAskQuestions} from './questions.js';
+import type {Answers} from './questions.js';
 import {CredflareError} from './index.js';
 
 export type FlowStep = 'questions' | 'documents' | 'facial_verification' | 'location_verification' | 'email_verification' | 'phone_verification' | 'host' | 'done';
@@ -15,8 +16,12 @@ export const requiresSelfie = requiresFacial;
 export function requiresLocation(info: SessionInfo): boolean {
   return info.profile?.verification_requirements.some(item => item.verification_type === 'location_verification') ?? false;
 }
-export function needsHostSteps(info: SessionInfo): boolean {
-  return !info.profile || (!!info.profile.form_schema?.length && !canAskQuestions(info.profile.form_schema)) || info.profile.verification_requirements.some(item => !inSdk.includes(item.verification_type));
+export function earlierAnswers(info: SessionInfo | null | undefined, local: Answers = {}): Answers {
+  const sent = info?.profile?.form_answers;
+  return {...local, ...(sent && typeof sent === 'object' && !Array.isArray(sent) ? sent : {})};
+}
+export function needsHostSteps(info: SessionInfo, earlier: Answers = earlierAnswers(info)): boolean {
+  return !info.profile || (!!info.profile.form_schema?.length && !canAskQuestions(info.profile.form_schema, earlier)) || info.profile.verification_requirements.some(item => !inSdk.includes(item.verification_type));
 }
 export function hasOutstanding(info: SessionInfo): boolean {
   if (!(requirements.refresh.open_statuses as readonly string[]).includes(info.status)) return false;
@@ -31,13 +36,13 @@ export function refreshOutcome(info: SessionInfo): 'continue' | 'receipt' {
 export function refreshFailureOutcome(error: unknown): 'receipt' | 'refresh_failed' {
   return error instanceof CredflareError && error.status === 409 ? 'receipt' : 'refresh_failed';
 }
-export function nextStep(info: SessionInfo): FlowStep {
+export function nextStep(info: SessionInfo, earlier: Answers = earlierAnswers(info)): FlowStep {
   if (!hasOutstanding(info)) return 'done';
-  if (info.profile?.form_schema?.length && canAskQuestions(info.profile.form_schema)) return 'questions';
+  if (info.profile?.form_schema?.length && canAskQuestions(info.profile.form_schema, earlier)) return 'questions';
   if (info.profile?.document_requirements.length) return 'documents';
   const next = info.profile?.verification_requirements.find(item => inSdk.includes(item.verification_type));
   if (next) return next.verification_type as FlowStep;
-  return needsHostSteps(info) ? 'host' : 'done';
+  return needsHostSteps(info, earlier) ? 'host' : 'done';
 }
 export function receiptKey(step: FlowStep): CopyKey | null {
   const keys: Partial<Record<FlowStep, CopyKey>> = {

@@ -49,7 +49,7 @@ export interface SessionInfo {
   requester: { name: string; logo_url: string | null; help_email?: string | null; help_url?: string | null } | null;
   brand: Record<string, unknown> | null;
   upload_limits: { max_file_size_bytes: number; allowed_file_types: string[]; max_uploads_per_requirement: number };
-  profile: { name: string | null; form_schema: FormField[] | null; document_requirements: DocumentRequirement[]; verification_requirements: VerificationRequirement[] } | null;
+  profile: { name: string | null; form_schema: FormField[] | null; form_answers?: Record<string, unknown> | null; document_requirements: DocumentRequirement[]; verification_requirements: VerificationRequirement[] } | null;
   capabilities: { trusted_camera: boolean; liveness: boolean | 'challenge'; deepfake_detection: boolean };
 }
 export interface UploadedEvidence {
@@ -211,7 +211,7 @@ export class CredflareSession {
 export {captureSteps, capturePolicy, isCaptureSupported, methodSummary} from './capture.js';
 export type {CaptureSource, CaptureStep, CapturePolicy} from './capture.js';
 
-export {requiresSelfie, requiresFacial, requiresLocation, needsHostSteps, selfieFileTypes, nextStep, documentsNextKey, hasOutstanding, refreshOutcome, refreshFailureOutcome, receiptKey} from './workflow.js';
+export {earlierAnswers, requiresSelfie, requiresFacial, requiresLocation, needsHostSteps, selfieFileTypes, nextStep, documentsNextKey, hasOutstanding, refreshOutcome, refreshFailureOutcome, receiptKey} from './workflow.js';
 export type {FlowStep} from './workflow.js';
 export * from './spec.generated.js';
 export {text, verifierName} from './copy.js';
@@ -226,8 +226,8 @@ export {acquireFix, fixProblem, locationCopy, locationErrorKey, locationRejectio
 export type {LocationErrorCode, LocationFix, LocationProvider} from './location.js';
 export {conditionHolds, isShown, showIfMatches, similarity} from './conditions.js';
 export type {ShowIf, ShowIfCondition} from './conditions.js';
-export {answerProblems, answersPayload, canAskQuestions, isEmptyAnswer, questionProblem, visibleQuestions} from './questions.js';
-export type {Answers, Question, QuestionProblem} from './questions.js';
+export {answerFor, answerProblems, answersPayload, canAskQuestions, compareNumberText, foundersAnswer, hasAnswer, isEmptyAnswer, isSupportedQuestion, questionProblem, submittedValue, visibleQuestions} from './questions.js';
+export type {Answers, FoundersAnswer, Question, QuestionProblem} from './questions.js';
 export {rejectionCopy, rejectionScreen} from './rejections.js';
 export type {RejectionContext, RejectionScreen} from './rejections.js';
 export {qrMatrix, qrSvg} from './qr.js';

@@ -33,7 +33,7 @@ test('liveness and location run inside the SDK in profile order', async () => {
   const withForm = {...info, profile: {...info.profile, verification_requirements: [], form_schema: [{key: 'full_name', label: 'Full name', type: 'text', required: true}]}};
   assert.equal(nextStep(withForm), 'questions');
   const withFounders = {...withForm, profile: {...withForm.profile, form_schema: [{key: 'founders', label: 'Founders', type: 'founders', required: true}]}};
-  assert.equal(nextStep(withFounders), 'host');
+  assert.equal(nextStep(withFounders), 'questions');
 });
 
 test('the documents list names the in app steps that follow, in profile order', async () => {

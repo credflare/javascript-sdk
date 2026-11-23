@@ -45,7 +45,7 @@ function loose(a: unknown, b: unknown): boolean {
     if (!isMap(a) || !isMap(b)) return false;
     const keys = Object.keys(a);
     if (keys.length !== Object.keys(b).length) return false;
-    return keys.every(key => Object.hasOwn(b, key) && loose(a[key], b[key]));
+    return keys.every(key => Object.prototype.hasOwnProperty.call(b, key) && loose(a[key], b[key]));
   }
   if (isNumeric(a) && isNumeric(b)) return Number(a) === Number(b);
   return asText(a) === asText(b);
@@ -117,7 +117,7 @@ function fuzzy(actual: unknown, expected: unknown): boolean {
 function resolvePath(path: string, context: unknown): [boolean, unknown] {
   let value = context;
   for (const segment of path.split('.')) {
-    if (!isMap(value) || !Object.hasOwn(value, segment)) return [false, null];
+    if (!isMap(value) || !Object.prototype.hasOwnProperty.call(value, segment)) return [false, null];
     value = value[segment];
   }
   return [true, value];

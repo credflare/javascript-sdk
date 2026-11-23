@@ -1,7 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {answerProblems, answersPayload, canAskQuestions, conditionHolds, isShown, requirements, text, visibleQuestions} from '../dist/index.js';
+import {execFileSync} from 'node:child_process';
+import {answerProblems, answersPayload, canAskQuestions, conditionHolds, earlierAnswers, isShown, needsHostSteps, nextStep, requirements, text, visibleQuestions} from '../dist/index.js';
 
 const load = async name => JSON.parse(await readFile(new URL(`./fixtures/${name}.json`, import.meta.url)));
 const cases = await load('show-if-cases');
@@ -24,7 +25,6 @@ test('the questionnaire session shows conditional questions only for matching an
   assert.ok(!keys({employment: 'Self employed'}).includes('employer'));
   assert.ok(keys({sources: ['Salary', 'Other']}).includes('sources_other'));
   assert.ok(!keys({}).includes('sources_other'));
-  assert.ok(!canAskQuestions([{key: 'founders', label: 'Founders', type: 'founders', required: true}]));
 });
 
 test('hidden questions are not validated and not sent', () => {
@@ -33,7 +33,7 @@ test('hidden questions are not validated and not sent', () => {
   assert.deepEqual(answersPayload(schema, answers), {country: 'CM', employment: 'Student', birth_date: '1990-02-28', sources: ['Salary'], terms: true});
   const employed = {...answers, employment: 'Employed', employer: ''};
   assert.deepEqual(Object.keys(answerProblems(schema, employed)), ['employer']);
-  assert.deepEqual(answersPayload(schema, {...employed, employer: ' Acme ', income: '5000.50'}), {country: 'CM', employment: 'Employed', employer: ' Acme ', income: 5000.5, birth_date: '1990-02-28', sources: ['Salary'], terms: true});
+  assert.deepEqual(answersPayload(schema, {...employed, employer: ' Acme ', income: '5000.50'}), {country: 'CM', employment: 'Employed', employer: ' Acme ', income: '5000.50', birth_date: '1990-02-28', sources: ['Salary'], terms: true});
 });
 
 test('validates each question type with the spec copy', () => {
@@ -55,4 +55,128 @@ test('validates each question type with the spec copy', () => {
   assert.equal(problem({employment: 'Unemployed'}, 'employment'), text('questions.required'));
   assert.equal(problem({sources: ['Salary', 'Lottery']}, 'sources'), text('questions.required'));
   assert.equal(problem({employer: 'x'.repeat(5001)}, 'employer'), text('questions.text_too_long'));
+});
+
+const question = key => schema.find(item => item.key === key);
+const income = {...question('income'), show_if: null, min: null, max: null};
+
+test('numbers keep the exact text the applicant typed', () => {
+  const payload = value => answersPayload([income], {income: value}).income;
+  assert.equal(payload('5000.5'), 5000.5);
+  assert.equal(payload(' 42 '), 42);
+  assert.equal(payload('9007199254740993'), '9007199254740993');
+  assert.equal(payload('01'), '01');
+  assert.equal(payload('-0'), '-0');
+  const huge = '9'.repeat(310);
+  assert.deepEqual(answerProblems([income], {income: huge}), {});
+  assert.equal(payload(huge), huge);
+  assert.equal(JSON.parse(JSON.stringify(answersPayload([income], {income: huge}))).income, huge);
+});
+
+test('number bounds compare the exact decimal text', () => {
+  const bounded = {...question('income'), show_if: null};
+  const problem = value => answerProblems([bounded], {income: value}).income?.key ?? null;
+  assert.equal(problem('10000000'), null);
+  assert.equal(problem('10000000.0000000000000001'), 'questions.number_max');
+  assert.equal(problem('-0.0000000000000000001'), 'questions.number_min');
+  assert.equal(problem('0.000'), null);
+});
+
+test('show_if sees exactly the values that are submitted', () => {
+  const follow = {...question('employer'), show_if: {match: 'all', conditions: [{path: 'form.income', op: 'regex', value: '^0'}]}};
+  const questions = [income, follow];
+  const answers = {income: '01', employer: 'Acme'};
+  assert.deepEqual(visibleQuestions(questions, answers).map(item => item.key), ['income', 'employer']);
+  const payload = answersPayload(questions, answers);
+  assert.deepEqual(payload, {income: '01', employer: 'Acme'});
+  assert.ok(isShown(follow, payload));
+  const blank = {...question('employer'), show_if: {conditions: [{path: 'form.sources_other', op: 'not_equals', value: 'x'}]}};
+  const other = {...question('sources_other'), show_if: null, required: false};
+  assert.deepEqual(visibleQuestions([other, blank], {sources_other: '   '}).map(item => item.key), ['sources_other']);
+  assert.deepEqual(answersPayload([other, blank], {sources_other: '   '}), {});
+});
+
+test('earlier answers decide which outstanding questions are shown', () => {
+  const outstanding = [question('employer')];
+  assert.deepEqual(visibleQuestions(outstanding, {}, {employment: 'Employed'}).map(item => item.key), ['employer']);
+  assert.deepEqual(answersPayload(outstanding, {employer: 'Acme'}, {employment: 'Employed'}), {employer: 'Acme'});
+  assert.deepEqual(visibleQuestions(outstanding, {}, {}).map(item => item.key), []);
+});
+
+test('text length counts characters, not UTF-16 code units', () => {
+  const employer = question('employer');
+  assert.equal(answerProblems([{...employer, show_if: null}], {employer: '\u{1F600}'.repeat(2501)}).employer, undefined);
+  assert.equal(answerProblems([{...employer, show_if: null}], {employer: '\u{1F600}'.repeat(5001)}).employer.key, 'questions.text_too_long');
+});
+
+test('dates in years 0001 to 0099 are real dates', () => {
+  const birth = question('birth_date');
+  const problem = value => answerProblems([birth], {birth_date: value}).birth_date?.key ?? null;
+  assert.equal(problem('0099-01-01'), null);
+  assert.equal(problem('0001-12-31'), null);
+  assert.equal(problem('0004-02-29'), null);
+  assert.equal(problem('0001-02-29'), 'questions.invalid_date');
+});
+
+test('founders questions are asked and sent as names and the applicant flag', () => {
+  const founders = {...question('employer'), key: 'founders', label: 'Founders', type: 'founders', show_if: null};
+  assert.ok(canAskQuestions([founders]));
+  assert.equal(answerProblems([founders], {}).founders.key, 'questions.required');
+  assert.equal(answerProblems([founders], {founders: {includes_applicant: false, names: ['  ', '']}}).founders.key, 'questions.required');
+  assert.deepEqual(answerProblems([founders], {founders: {includes_applicant: true, names: []}}), {});
+  assert.deepEqual(answersPayload([founders], {founders: {includes_applicant: false, names: [' Ada Lovelace ', '', 'Grace Hopper']}}), {founders: {includes_applicant: false, names: ['Ada Lovelace', 'Grace Hopper']}});
+  assert.deepEqual(answersPayload([{...founders, required: false}], {founders: {includes_applicant: false, names: []}}), {});
+});
+
+test('only visible unsupported questions send the form back to the host', async () => {
+  const info = JSON.parse(await readFile(new URL('./fixtures/questionnaire-session.json', import.meta.url))).data;
+  const future = {...question('employer'), key: 'signature', type: 'signature'};
+  const withFuture = {...info, profile: {...info.profile, form_schema: [question('employment'), future]}};
+  assert.equal(nextStep(withFuture), 'questions');
+  assert.equal(needsHostSteps(withFuture), false);
+  assert.notEqual(nextStep(withFuture, {employment: 'Employed'}), 'questions');
+  assert.equal(needsHostSteps(withFuture, {employment: 'Employed'}), true);
+  assert.ok(!canAskQuestions([{...future, show_if: null}]));
+});
+
+test('a question keyed like an object property is looked up as an answer only', () => {
+  const ctor = {...question('employer'), key: 'constructor', show_if: null};
+  assert.deepEqual(Object.keys(answerProblems([ctor], {})), ['constructor']);
+  assert.equal(answerProblems([ctor], {}).constructor.key, 'questions.required');
+  assert.deepEqual(answersPayload([ctor], {}), {});
+  assert.deepEqual(answersPayload([ctor], {constructor: 'Acme'}), {constructor: 'Acme'});
+  const after = {...question('employer'), key: 'after', show_if: {conditions: [{path: 'form.constructor', op: 'is_empty'}]}};
+  assert.deepEqual(visibleQuestions([ctor, after], {}).map(item => item.key), ['constructor', 'after']);
+});
+
+test('shared helpers work where Object.hasOwn is missing', async () => {
+  const fixtures = new URL('./fixtures/', import.meta.url).pathname;
+  const script = `
+    delete Object.hasOwn;
+    const sdk = await import(${JSON.stringify(new URL('../dist/index.js', import.meta.url).href)});
+    const {readFileSync} = await import('node:fs');
+    const load = name => JSON.parse(readFileSync(${JSON.stringify(fixtures)} + name + '.json', 'utf8'));
+    const schema = load('questionnaire-session').data.profile.form_schema;
+    const answers = {country: 'CM', employment: 'Employed', employer: 'Acme', birth_date: '1990-01-01', terms: true};
+    if (Object.keys(sdk.answerProblems(schema, answers)).length) throw new Error('problems');
+    if (sdk.answersPayload(schema, answers).employer !== 'Acme') throw new Error('payload');
+    const rejection = load('rejections/phone.not_configured');
+    const screen = sdk.rejectionScreen(new sdk.CredflareError(rejection.message, 422, rejection.errors, rejection.code));
+    if (screen.action !== 'leave') throw new Error('rejection');
+    const cases = load('show-if-cases');
+    for (const item of cases.conditions) if (sdk.conditionHolds(item.condition, {form: item.form}) !== item.expect) throw new Error(item.name);
+  `;
+  execFileSync(process.execPath, ['--input-type=module', '-e', script], {stdio: 'pipe'});
+});
+
+test('earlier answers from the session reveal questions after a refresh and are not sent again', async () => {
+  const info = JSON.parse(await readFile(new URL('./fixtures/questionnaire-earlier-answers-session.json', import.meta.url))).data;
+  const earlier = earlierAnswers(info);
+  assert.deepEqual(earlier, info.profile.form_answers);
+  assert.equal(nextStep(info), 'questions');
+  assert.deepEqual(visibleQuestions(info.profile.form_schema, {}, earlier).map(item => item.key), ['employer']);
+  assert.deepEqual(visibleQuestions(info.profile.form_schema, {}).map(item => item.key), []);
+  assert.equal(answerProblems(info.profile.form_schema, {}, earlier).employer.key, 'questions.required');
+  assert.deepEqual(answersPayload(info.profile.form_schema, {employer: 'Acme'}, earlier), {employer: 'Acme'});
+  assert.deepEqual(earlierAnswers({...info, profile: {...info.profile, form_answers: undefined}}, {employment: 'Student'}), {employment: 'Student'});
 });

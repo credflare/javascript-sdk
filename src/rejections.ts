@@ -30,7 +30,7 @@ interface RejectionCopy {
 const codes = rejections.codes as Record<string, RejectionCopy>;
 
 export function rejectionCopy(code: string | null | undefined): RejectionCopy | null {
-  return code && Object.hasOwn(codes, code) ? codes[code]! : null;
+  return code && Object.prototype.hasOwnProperty.call(codes, code) ? codes[code]! : null;
 }
 
 function helpLine(requester: RejectionContext['requester'], say: (key: string, values?: Record<string, string>) => string): Pick<RejectionScreen, 'help' | 'helpLink'> {
