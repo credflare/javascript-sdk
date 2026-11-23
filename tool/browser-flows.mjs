@@ -73,7 +73,7 @@ async function fresh() {
     window.fetcher = async (url, init) => {
       const path = new URL(url).pathname.replace(/^.*\\/sdk\\/sessions\\/[^/]+/, '') || '/';
       const key = init.method + ' ' + path;
-      window.calls.push({key, body: init.body});
+      window.calls.push({key, body: init.body, idempotency: init.headers?.['X-Idempotency-Key'] ?? null});
       const route = window.routes[key];
       if (!route) throw new TypeError('offline');
       return route(init);
@@ -299,6 +299,30 @@ try {
   await until(`app.innerText.includes(say('receipt.title'))`, 12000);
   assert.equal(await evaluate(`calls.filter(c => c.key === 'GET /').length`), 2, 'the closed poll is not followed by another fetch');
   console.log('PASS a closed case seen by the handoff poll ends on the receipt without another fetch');
+
+  await fresh();
+  await call('Browser.grantPermissions', {origin: new URL(page).origin, permissions: ['geolocation']});
+  await call('Emulation.setGeolocationOverride', {latitude: 4.0511, longitude: 9.7679, accuracy: 12});
+  await evaluate(`(() => {
+    let submits = 0;
+    routes['POST /submit'] = () => { if (++submits === 1) throw new TypeError('offline'); return reply(201, fx['location-submission']); };
+    window.located = false;
+    browser.mountLocation(app, session, fx['capture-session'].data, {onSubmitted() { window.located = true; }});
+    press(say('location.share'));
+    return true;
+  })()`);
+  await until(`app.innerText.includes(say('location.found_title'))`);
+  await evaluate(`press(say('location.send')), true`);
+  await until(`app.innerText.includes(say('errors.send_location_failed'))`);
+  await delay(30);
+  await evaluate(`press(say('location.send')), true`);
+  await until('window.located === true');
+  const sends = await evaluate(`calls.filter(c => c.key === 'POST /submit')`);
+  assert.equal(sends.length, 2);
+  assert.equal(sends[1].idempotency, sends[0].idempotency, 'the retry reuses the idempotency key');
+  assert.deepEqual(JSON.parse(sends[1].body), JSON.parse(sends[0].body), 'the retry sends the identical payload, capture time included');
+  await call('Emulation.clearGeolocationOverride');
+  console.log('PASS retrying a location send after a lost response resends the same payload under the same key');
 
   await fresh();
   const loops = await evaluate(`(async () => {

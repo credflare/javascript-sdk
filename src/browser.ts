@@ -418,7 +418,7 @@ export function mountLocation(element: HTMLElement, session: CredflareSession, i
   const verifier = verifierName(info);
   const copy = locationCopy(settings, verifier);
   const abort = new AbortController();
-  let disposed = false, submitKey = crypto.randomUUID();
+  let disposed = false, submitKey = crypto.randomUUID(), payload: {key: string; fix: LocationFix; body: ReturnType<typeof locationSubmission>} | null = null;
   const render = (...children: Node[]) => { if (!disposed) element.replaceChildren(...children); };
   const header = () => [icon('location'), node('h2', 'cf-title', copy.title)];
 
@@ -457,7 +457,8 @@ export function mountLocation(element: HTMLElement, session: CredflareSession, i
       send.disabled = retry.disabled = true;
       send.textContent = say('sending.sending');
       try {
-        await session.submitLocation(locationSubmission(fix), submitKey, abort.signal);
+        if (!payload || payload.key !== submitKey || payload.fix !== fix) payload = {key: submitKey, fix, body: locationSubmission(fix)};
+        await session.submitLocation(payload.body, payload.key, abort.signal);
         if (!disposed) options.onSubmitted();
       } catch (cause) {
         if (disposed) return;
