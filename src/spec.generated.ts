@@ -1,9 +1,9 @@
 // GENERATED FILE, DO NOT EDIT.
-// Source: credflare sdk-spec 1.1.0 (6824e65d1864). Regenerate with scripts/generate.mjs.
+// Source: credflare sdk-spec 1.1.0 (1489c6c1b827). Regenerate with scripts/generate.mjs.
 /* eslint-disable */
 
 export const specVersion = "1.1.0" as const;
-export const specHash = "6824e65d1864" as const;
+export const specHash = "1489c6c1b827" as const;
 
 export const liveness = {
   "version": 1,
@@ -457,6 +457,10 @@ export const copy = {
     "questions.invalid_email": "Enter a valid email address.",
     "questions.invalid_phone": "Enter a valid phone number.",
     "questions.text_too_long": "Use at most 5000 characters.",
+    "questions.founders_name": "Founder name",
+    "questions.founders_add": "Add a founder",
+    "questions.founders_remove": "Remove",
+    "questions.founders_includes_me": "I am one of the founders",
     "handoff.action": "Continue on your phone",
     "handoff.title": "Continue on your phone",
     "handoff.body": "Scan this code with your phone camera to carry on there. The code works once and expires in {minutes} minutes.",
@@ -832,6 +836,7 @@ export const requirements = {
     "default_match": "all",
     "max_conditions": 10,
     "path_prefix": "form.",
+    "earlier_answers": "profile.form_answers",
     "operators": [
       "equals",
       "not_equals",
