@@ -277,12 +277,12 @@ test('requests and confirms contact codes with the real 202 and 201 bodies and n
   assert.equal(confirmed.id, 1);
 });
 
-test('a resend too soon rejection keeps its resend time on the error', async () => {
+test('a resend too soon rejection keeps its resend time and waiting code on the error', async () => {
   const {rejectionScreen} = await import('../dist/index.js');
   const body = JSON.parse(await readFile(new URL('./fixtures/rejections/email.resend_too_soon.json', import.meta.url)));
   const error = await session('reject:email.resend_too_soon').requestCode('email', 'jane@example.test').catch(cause => cause);
   assert.equal(error.code, 'email.resend_too_soon');
-  assert.deepEqual(error.details, {resend_available_at: body.resend_available_at});
+  assert.deepEqual(error.details, {resend_available_at: body.resend_available_at, destination: body.destination, expires_at: body.expires_at, sends_remaining: body.sends_remaining});
   assert.equal(rejectionScreen(error).action, 'wait');
 });
 
