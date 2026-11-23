@@ -1024,7 +1024,7 @@ export function mountRemainingSteps(element: HTMLElement, session: CredflareSess
       return;
     }
     if (disposed) return;
-    const step = nextStep(info, earlierAnswers(info, {...answered, ...unsent}));
+    const step = nextStep(info, {...earlierAnswers(info, answered), ...unsent});
     if (step === 'documents') return options.onDocuments?.(info);
     if (options.handoff && step !== 'done' && step !== 'host') {
       const inner = node('div');

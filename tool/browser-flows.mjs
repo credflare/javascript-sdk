@@ -231,6 +231,25 @@ try {
 
   await fresh();
   await evaluate(`(() => {
+    const info = structuredClone(fx['questionnaire-earlier-answers-session']);
+    const asked = structuredClone(fx['questionnaire-session']).data.profile.form_schema;
+    const employer = asked.find(q => q.key === 'employer');
+    info.data.profile.form_schema = [asked.find(q => q.key === 'employment'), {...employer, type: 'signature'}];
+    info.data.profile.form_answers = {employment: 'Student'};
+    routes['GET /'] = () => reply(200, info);
+    window.handed = [];
+    browser.mountRemainingSteps(app, session, {onHostActionRequired: ({code}) => handed.push(code)});
+    return true;
+  })()`);
+  await until(`app.querySelector('select')?.value === 'Student'`);
+  await evaluate(`(() => { const select = app.querySelector('select'); select.value = 'Employed'; select.dispatchEvent(new Event('change')); return true; })()`);
+  await until(`app.innerText.includes(say('receipt.host_steps')) || app.querySelector('select')?.value === 'Student'`);
+  assert.ok((await screen()).includes(await evaluate(`say('receipt.host_steps')`)), 'the changed answer is kept and the form goes to the host');
+  assert.deepEqual(await evaluate('handed'), [null]);
+  console.log('PASS changing a re-asked answer to reveal a question the SDK cannot ask hands the form to the host');
+
+  await fresh();
+  await evaluate(`(() => {
     routes['GET /'] = () => reply(200, fx['requirement-added-session']);
     routes['POST /phone-codes'] = () => reply(422, fx['rejections/phone.not_configured']);
     window.handed = [];
