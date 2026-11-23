@@ -980,9 +980,9 @@ export function mountRemainingSteps(element: HTMLElement, session: CredflareSess
   const answered: Answers = {};
   let unsent: Answers = {};
   const closed = () => void advance(null);
-  const hostReceipt = (target: HTMLElement, info: SessionInfo, code: string | null) => {
+  const hostReceipt = (info: SessionInfo, code: string | null) => {
     dispose?.();
-    dispose = mountReceipt(target, info, {received, hostSteps: true, onDone: options.onDone});
+    dispose = mountReceipt(element, info, {received, hostSteps: true, onDone: options.onDone});
     hostAction(element, code, options.onHostActionRequired);
   };
   const submitted = (step: FlowStep) => () => {
@@ -1046,11 +1046,11 @@ export function mountRemainingSteps(element: HTMLElement, session: CredflareSess
       return;
     }
     if (step === 'email_verification' || step === 'phone_verification') {
-      const onLeave = (code: string | null) => { if (options.onLeave) options.onLeave(code); else hostReceipt(target, info, code); };
+      const onLeave = (code: string | null) => { if (options.onLeave) options.onLeave(code); else hostReceipt(info, code); };
       dispose = mountContactCode(target, session, info, {channel: step === 'email_verification' ? 'email' : 'phone', onSubmitted: submitted(step), onLeave, onClosed: closed});
       return;
     }
-    if (step === 'host') return hostReceipt(target, info, null);
+    if (step === 'host') return hostReceipt(info, null);
     dispose = mountReceipt(target, info, {received, onDone: options.onDone});
   };
   void advance(options.info);

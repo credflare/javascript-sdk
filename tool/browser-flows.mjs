@@ -193,6 +193,23 @@ try {
 
   await fresh();
   await evaluate(`(() => {
+    routes['GET /'] = () => reply(200, fx['requirement-added-session']);
+    routes['POST /phone-codes'] = () => reply(422, fx['rejections/phone.not_configured']);
+    window.handed = [];
+    browser.mountRemainingSteps(app, session, {handoff: true, onHostActionRequired: ({code}) => handed.push(code)});
+    return true;
+  })()`);
+  await until(`!!app.querySelector('input[type=tel]')`);
+  await evaluate(`(() => { type(app.querySelector('input[type=tel]'), '+237650000001'); submitForm(); return true; })()`);
+  await until(`app.innerText.includes(say('rejection.phone_not_configured.title'))`);
+  await evaluate(`press(say(sdk.rejections.actions.leave.label)), true`);
+  await until(`app.innerText.includes(say('receipt.host_steps'))`);
+  assert.deepEqual(await evaluate('handed'), ['phone.not_configured']);
+  assert.ok(!(await screen()).includes(await evaluate(`say('handoff.action')`)), 'the receipt does not offer to continue on a phone');
+  console.log('PASS leaving a step hands over to the host on a receipt without the phone offer');
+
+  await fresh();
+  await evaluate(`(() => {
     const sent = structuredClone(fx['phone-code-request']);
     sent.data.resend_available_at = new Date(Date.now() - 1000).toISOString();
     routes['POST /phone-codes'] = () => reply(202, sent);
